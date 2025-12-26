@@ -63,8 +63,8 @@ impl App {
     pub fn ensure_views(&mut self, size: Rect) -> u16 {
         // For the Hilbert map: pick the largest power-of-two square that fits.
         let max_side = min(size.width.saturating_sub(2), size.height.saturating_sub(2));
-        let side = hilbert::best_pow2_side(max_side as u16);
-        let bins = max(10, size.width.saturating_sub(2)) as u16;
+        let side = hilbert::best_pow2_side(max_side);
+        let bins = max(10, size.width.saturating_sub(2));
 
         if side >= 2 {
             self.ensure_hilbert(side);
