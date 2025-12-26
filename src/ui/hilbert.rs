@@ -1,7 +1,5 @@
 use std::cmp::max;
 
-use crate::{App, HilbertCursor, cache::HilbertCache, ui::ViewMode};
-
 use ratatui::{
     Frame,
     layout::Rect,
@@ -10,6 +8,8 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 use rayon::prelude::*;
+
+use crate::{App, HilbertCursor, cache::HilbertCache, ui::ViewMode};
 
 impl App {
     pub fn ensure_hilbert(&mut self, side: u16) {
@@ -338,9 +338,11 @@ mod tests {
             fn name(&self) -> &'static str {
                 "dummy"
             }
+
             fn value_norm(&self, _: &[u8]) -> f64 {
                 0.5
             }
+
             fn value_norm_sparse(&self, _: &[u8]) -> f64 {
                 0.5
             }

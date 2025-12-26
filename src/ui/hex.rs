@@ -99,8 +99,9 @@ pub fn draw_hex_viewer(f: &mut Frame, area: Rect, offset: u64, window_data: &[u8
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ratatui::layout::Rect;
+
+    use super::*;
 
     #[test]
     fn compute_hex_page_bytes_reasonable() {

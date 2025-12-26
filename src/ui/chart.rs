@@ -1,16 +1,16 @@
 use std::cmp::max;
 
-use crate::{
-    App,
-    cache::{ChartCache, MetricCache},
-};
-
 use ratatui::{
     Frame,
     layout::Rect,
     style::{Color, Style},
     symbols,
     widgets::{Axis, Block, Borders, Chart, Dataset, GraphType},
+};
+
+use crate::{
+    App,
+    cache::{ChartCache, MetricCache},
 };
 
 impl App {
@@ -171,12 +171,15 @@ mod tests {
         fn name(&self) -> &'static str {
             "dummy"
         }
+
         fn value_norm(&self, _: &[u8]) -> f64 {
             0.5
         }
+
         fn value_norm_sparse(&self, _: &[u8]) -> f64 {
             0.5
         }
+
         fn analyze_bins(&self, _: &[u8], bins: usize) -> BinsReport {
             BinsReport {
                 values_norm: vec![0.5; bins],

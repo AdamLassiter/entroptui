@@ -24,8 +24,9 @@ pub fn draw_shortcuts(f: &mut Frame<'_>, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ratatui::layout::Rect;
+
+    use super::*;
 
     #[test]
     fn draw_shortcuts_safe_to_call() {

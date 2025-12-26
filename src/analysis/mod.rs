@@ -198,9 +198,11 @@ mod tests {
             fn name(&self) -> &'static str {
                 "dummy"
             }
+
             fn value_norm(&self, data: &[u8]) -> f64 {
                 data.iter().map(|&b| b as f64).sum::<f64>() / 255.0
             }
+
             fn value_norm_sparse(&self, data: &[u8]) -> f64 {
                 self.value_norm(data)
             }

@@ -1,12 +1,3 @@
-use anyhow::{Context, Result};
-use clap::Parser;
-use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
-    execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
-use ratatui::layout::Rect;
-use ratatui::{Terminal, backend::CrosstermBackend};
 use std::{
     cmp::{max, min},
     fs::File,
@@ -14,6 +5,15 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
+
+use anyhow::{Context, Result};
+use clap::Parser;
+use crossterm::{
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
+use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
 mod analysis;
 mod cache;
@@ -441,10 +441,12 @@ fn draw_app(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ratatui::layout::Rect;
     use std::io::Write;
+
+    use ratatui::layout::Rect;
     use tempfile::NamedTempFile;
+
+    use super::*;
 
     #[test]
     fn filewindow_can_read_various_offsets() {
@@ -561,9 +563,11 @@ mod tests {
             fn name(&self) -> &'static str {
                 "dummy"
             }
+
             fn value_norm(&self, _: &[u8]) -> f64 {
                 0.5
             }
+
             fn value_norm_sparse(&self, _: &[u8]) -> f64 {
                 0.5
             }

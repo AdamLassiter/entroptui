@@ -157,8 +157,9 @@ pub fn draw_summary(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ratatui::layout::Rect;
+
+    use super::*;
 
     #[test]
     fn color_for_entropy_bpb_ranges() {

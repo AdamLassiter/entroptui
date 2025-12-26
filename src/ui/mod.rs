@@ -5,14 +5,9 @@ mod shortcuts;
 mod suggestions;
 mod summary;
 
-use crate::{
-    App, HilbertCursor,
-    cache::{ChartCache, HilbertCache, MetricCache},
-    suggest::{Features, Suggestion},
-    ui::{
-        chart::draw_chart, hex::draw_hex_viewer, hilbert::draw_hilbert, shortcuts::draw_shortcuts,
-        suggestions::draw_suggestions, summary::draw_summary,
-    },
+use std::{
+    cmp::{max, min},
+    path::Path,
 };
 
 use ratatui::{
@@ -22,8 +17,21 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
-use std::cmp::{max, min};
-use std::path::Path;
+
+use crate::{
+    App,
+    HilbertCursor,
+    cache::{ChartCache, HilbertCache, MetricCache},
+    suggest::{Features, Suggestion},
+    ui::{
+        chart::draw_chart,
+        hex::draw_hex_viewer,
+        hilbert::draw_hilbert,
+        shortcuts::draw_shortcuts,
+        suggestions::draw_suggestions,
+        summary::draw_summary,
+    },
+};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
 pub enum ViewMode {
@@ -240,17 +248,20 @@ mod tests {
 
     #[test]
     fn ensure_views_doesnt_panic() {
-        use crate::analysis::Analyzer;
         use ratatui::layout::Rect;
+
+        use crate::analysis::Analyzer;
 
         struct Dummy;
         impl Analyzer for Dummy {
             fn name(&self) -> &'static str {
                 "dummy"
             }
+
             fn value_norm(&self, _: &[u8]) -> f64 {
                 0.5
             }
+
             fn value_norm_sparse(&self, _: &[u8]) -> f64 {
                 0.5
             }

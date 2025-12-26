@@ -62,8 +62,8 @@ impl Heuristic for CompressedVsEncryptedHeuristic {
 
 #[cfg(test)]
 mod tests {
-    use crate::suggest::magic::MagicHit;
     use super::*;
+    use crate::suggest::magic::MagicHit;
 
     #[test]
     fn detects_compressed_or_encrypted() {

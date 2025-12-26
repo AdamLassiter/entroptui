@@ -47,9 +47,10 @@ pub fn draw_suggestions(f: &mut Frame, area: Rect, suggestions: &[Suggestion]) {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::layout::Rect;
+
     use super::*;
     use crate::suggest::Suggestion;
-    use ratatui::layout::Rect;
 
     #[test]
     fn draw_suggestions_handles_empty_and_nonempty() {
