@@ -57,10 +57,10 @@ fn num_span(text: String, color: Color) -> Span<'static> {
     Span::styled(text, Style::default().fg(color))
 }
 
-pub fn draw_summary<'a>(
+pub fn draw_summary(
     f: &mut Frame,
     area: Rect,
-    window_data: &'a [u8],
+    window_data: &[u8],
     plot: Option<&PlotCache>,
     features: &Features,
 ) {

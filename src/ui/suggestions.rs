@@ -1,8 +1,14 @@
-use ratatui::{Frame, layout::Rect, style::{Color, Style}, text::{Line, Span}, widgets::{Block, Borders, Paragraph, Wrap}};
+use ratatui::{
+    Frame,
+    layout::Rect,
+    style::{Color, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Paragraph, Wrap},
+};
 
 use crate::suggest::Suggestion;
 
-pub fn draw_suggestions<'a>(f: &mut Frame, area: Rect, suggestions: &[Suggestion]) {
+pub fn draw_suggestions(f: &mut Frame, area: Rect, suggestions: &[Suggestion]) {
     let block = Block::default().title("Suggestions").borders(Borders::ALL);
 
     let mut suggestion_lines = Vec::new();

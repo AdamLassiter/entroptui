@@ -7,7 +7,7 @@ mod mixed_region;
 mod structured_bin;
 mod text;
 
-use crate::{App, SuggestCache, analysis::BucketSize, ui::ViewMode};
+use crate::{App, SuggestCache, analysis::BucketSize, suggest::magic::MagicHit, ui::ViewMode};
 
 #[derive(Clone, Debug)]
 pub struct Suggestion {
@@ -38,13 +38,6 @@ pub struct SuggestInput<'a> {
     pub entropy_mean_bpb: f64, // 0..8
     pub entropy_std_bpb: f64,
     pub entropy_bins_norm: Option<&'a [f64]>, // 0..1, optional
-}
-
-#[derive(Clone, Debug)]
-pub struct MagicHit {
-    name: &'static str,
-    at: usize,
-    strong: bool, // at==0
 }
 
 #[derive(Clone, Debug, Default)]
@@ -159,7 +152,7 @@ impl Features {
             input.entropy_bins_norm.map(min_max).unwrap_or((0.0, 0.0));
 
         let utf8_valid = std::str::from_utf8(sample).is_ok();
-        let magic_hits = scan_magic(sample);
+        let magic_hits = magic::scan_magic(sample);
 
         Self {
             sample_len,
@@ -212,78 +205,6 @@ fn chi_square_uniform_256(hist: &[u32; 256], n: usize) -> f64 {
         chi2 += (d * d) / expected;
     }
     chi2
-}
-
-fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() {
-        return Some(0);
-    }
-    if hay.len() < needle.len() {
-        return None;
-    }
-    hay.windows(needle.len()).position(|w| w == needle)
-}
-
-fn scan_magic(sample: &[u8]) -> Vec<MagicHit> {
-    // We treat hits at the beginning as "strong".
-    let mut hits = Vec::new();
-
-    let magics: &[(&'static str, &'static [u8])] = &[
-        ("PNG", b"\x89PNG\r\n\x1a\n"),
-        ("ZIP (local file header)", b"PK\x03\x04"),
-        ("ZIP (central directory)", b"PK\x01\x02"),
-        ("GZIP", b"\x1F\x8B"),
-        ("Zstandard", b"\x28\xB5\x2F\xFD"),
-        ("XZ", b"\xFD\x37\x7A\x58\x5A\x00"),
-        ("Bzip2", b"BZh"),
-        ("PDF", b"%PDF-"),
-        ("ELF", b"\x7FELF"),
-        ("PE/COFF (MZ)", b"MZ"),
-        ("UTF-8 BOM", b"\xEF\xBB\xBF"),
-        ("UTF-16 LE BOM", b"\xFF\xFE"),
-        ("UTF-16 BE BOM", b"\xFE\xFF"),
-    ];
-
-    for (name, sig) in magics {
-        if let Some(at) = find_subslice(sample, sig) {
-            hits.push(MagicHit {
-                name,
-                at,
-                strong: at == 0,
-            });
-        }
-    }
-
-    // Mach-O (several common magics)
-    let macho: &[(&'static str, [u8; 4])] = &[
-        ("Mach-O (FE ED FA CE)", [0xFE, 0xED, 0xFA, 0xCE]),
-        ("Mach-O (FE ED FA CF)", [0xFE, 0xED, 0xFA, 0xCF]),
-        ("Mach-O (CE FA ED FE)", [0xCE, 0xFA, 0xED, 0xFE]),
-        ("Mach-O (CF FA ED FE)", [0xCF, 0xFA, 0xED, 0xFE]),
-    ];
-    for (name, sig) in macho {
-        if let Some(at) = find_subslice(sample, sig) {
-            hits.push(MagicHit {
-                name,
-                at,
-                strong: at == 0,
-            });
-        }
-    }
-
-    // zlib/deflate stream header is common: 0x78 0x01/0x5E/0x9C/0xDA
-    if sample.len() >= 2 && sample[0] == 0x78 {
-        let b1 = sample[1];
-        if matches!(b1, 0x01 | 0x5E | 0x9C | 0xDA) {
-            hits.push(MagicHit {
-                name: "zlib/deflate (0x78 ?? header)",
-                at: 0,
-                strong: true,
-            });
-        }
-    }
-
-    hits
 }
 
 pub trait Heuristic: Send + Sync {
