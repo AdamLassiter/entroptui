@@ -6,7 +6,8 @@ mod suggestions;
 mod summary;
 
 use crate::{
-    App, cache::{ChartCache, HilbertCache, MetricCache},
+    App, HilbertCursor,
+    cache::{ChartCache, HilbertCache, MetricCache},
     suggest::{Features, Suggestion},
     ui::{
         chart::draw_chart, hex::draw_hex_viewer, hilbert::draw_hilbert, shortcuts::draw_shortcuts,
@@ -79,6 +80,10 @@ pub fn draw(
     metric: Option<&MetricCache>,
     chart: Option<&ChartCache>,
     hilbert: Option<&HilbertCache>,
+    hilbert_cursor: Option<HilbertCursor>,
+    hilbert_cursor_info: Option<(u64, u64, f64)>,
+    hex_base_offset: u64,
+    hex_data: &[u8],
     features: &Features,
     suggestions: &[Suggestion],
     status: &str,
@@ -111,9 +116,19 @@ pub fn draw(
         metric,
         chart,
         hilbert,
-        window_data,
+        hilbert_cursor,
+        hex_base_offset,
+        hex_data,
     );
-    draw_footer(f, root[2], window_data, chart, features, suggestions);
+    draw_footer(
+        f,
+        root[2],
+        window_data,
+        chart,
+        features,
+        suggestions,
+        hilbert_cursor_info,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -150,7 +165,7 @@ fn draw_header(
         )]));
     } else {
         lines.push(Line::from(
-            "Controls: ←/→ scroll | PgUp/PgDn page | +/- zoom | v view | q quit",
+            "Controls: ←/→ scroll | PgUp/PgDn page | +/- zoom | v view | h/j/k/l/Enter move/jump-to cursor (Hilbert) | q quit",
         ));
     }
 
@@ -167,12 +182,14 @@ fn draw_main(
     metric: Option<&MetricCache>,
     chart: Option<&ChartCache>,
     hilbert: Option<&HilbertCache>,
-    window_data: &[u8],
+    hilbert_cursor: Option<HilbertCursor>,
+    hex_base_offset: u64,
+    hex_data: &[u8],
 ) {
     match view {
-        ViewMode::Hilbert => draw_hilbert(f, area, hilbert),
+        ViewMode::Hilbert => draw_hilbert(f, area, hilbert, hilbert_cursor),
         ViewMode::Chart => draw_chart(f, area, metric, chart),
-        ViewMode::Hex => draw_hex_viewer(f, area, offset, window_data),
+        ViewMode::Hex => draw_hex_viewer(f, area, hex_base_offset, hex_data),
     }
 }
 
@@ -183,6 +200,7 @@ fn draw_footer(
     plot: Option<&ChartCache>,
     features: &Features,
     suggestions: &[Suggestion],
+    hilbert_cursor_info: Option<(u64, u64, f64)>,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -193,7 +211,14 @@ fn draw_footer(
         ])
         .split(area);
 
-    draw_summary(f, chunks[0], window_data, plot, features);
+    draw_summary(
+        f,
+        chunks[0],
+        window_data,
+        plot,
+        features,
+        hilbert_cursor_info,
+    );
     draw_suggestions(f, chunks[1], suggestions);
     draw_shortcuts(f, chunks[2]);
 }

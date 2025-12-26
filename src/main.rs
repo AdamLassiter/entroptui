@@ -34,6 +34,12 @@ use crate::{
     ui::ViewMode,
 };
 
+#[derive(Copy, Clone, Debug)]
+struct HilbertCursor {
+    x: u16,
+    y: u16,
+}
+
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
@@ -119,6 +125,8 @@ struct App {
     analyzers: Vec<Box<dyn Analyzer>>,
     analyzer_idx: usize,
 
+    hilbert_cursor: Option<HilbertCursor>,
+
     suggest_engine: SuggestEngine,
     suggest_cache: Option<SuggestCache>,
 
@@ -167,6 +175,7 @@ impl App {
             window_len: max(4 * 1024, window_len),
             view: ViewMode::Chart,
             hex_page_bytes: 0,
+            hilbert_cursor: None,
             suggest_engine: SuggestEngine::default(),
             suggest_cache: None,
             analyzers,
@@ -206,6 +215,13 @@ impl App {
     fn next_view(&mut self) {
         self.view = self.view.next();
         self.suggest_cache = None;
+
+        // Initialize cursor when entering Hilbert; clear when leaving.
+        if self.view == ViewMode::Hilbert {
+            self.hilbert_cursor = Some(HilbertCursor { x: 0, y: 0 });
+        } else {
+            self.hilbert_cursor = None;
+        }
     }
 
     fn zoom_in(&mut self) {
@@ -268,84 +284,13 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, args: Args) ->
     let mut last_tick = Instant::now();
 
     loop {
-        terminal.draw(|f| {
-            app.ensure_size(f.area());
-            let analyzer = &app.analyzers[app.analyzer_idx];
-
-            ui::draw(
-                f,
-                &app.path,
-                app.file_len,
-                app.offset,
-                app.window_len,
-                app.view,
-                analyzer.name(),
-                &app.window_data,
-                app.metric.as_ref(),
-                app.chart.as_ref(),
-                app.hilbert.as_ref(),
-                app.suggest_cache
-                    .as_ref()
-                    .map(|c| &c.features)
-                    .unwrap_or(&Features::default()),
-                app.suggest_cache
-                    .as_ref()
-                    .map(|c| c.suggestions.as_slice())
-                    .unwrap_or(&[]),
-                &app.status,
-            );
-        })?;
+        draw_app(terminal, &mut app)?;
 
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
-        if event::poll(timeout)?
-            && let Event::Key(k) = event::read()?
-        {
-            if k.kind != KeyEventKind::Press {
-                continue;
-            }
-
-            match (k.code, k.modifiers) {
-                (KeyCode::Char('q'), _)
-                | (KeyCode::Esc, _)
-                | (KeyCode::Char('c'), KeyModifiers::CONTROL) => break,
-
-                (KeyCode::Char('v'), _) => {
-                    app.next_view();
-                }
-
-                (KeyCode::Char('c'), _) => {
-                    app.next_analyzer();
-                }
-
-                (KeyCode::Char('+'), _) | (KeyCode::Char('='), _) => {
-                    app.zoom_in();
-                }
-                (KeyCode::Char('-'), _) => {
-                    app.zoom_out();
-                }
-
-                (KeyCode::Left, _) => {
-                    let step = max(1, app.hex_page_bytes) as i64;
-                    app.scroll_by(-step);
-                }
-                (KeyCode::Right, _) => {
-                    let step = max(1, app.hex_page_bytes) as i64;
-                    app.scroll_by(step);
-                }
-
-                (KeyCode::PageUp, _) => {
-                    let step = max(1, app.window_len) as i64;
-                    app.scroll_by(-step);
-                }
-                (KeyCode::PageDown, _) => {
-                    let step = max(1, app.window_len) as i64;
-                    app.scroll_by(step);
-                }
-
-                (KeyCode::Home, _) => app.jump_start(),
-                (KeyCode::End, _) => app.jump_end(),
-                _ => {}
-            }
+        match read_input(&mut app, timeout) {
+            InputResult::Break => break,
+            InputResult::Continue => continue,
+            InputResult::None => {}
         }
 
         if last_tick.elapsed() >= tick_rate {
@@ -362,5 +307,133 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, args: Args) ->
         }
     }
 
+    Ok(())
+}
+
+enum InputResult {
+    Continue,
+    Break,
+    None,
+}
+
+fn read_input(app: &mut App, timeout: Duration) -> InputResult {
+    if event::poll(timeout).is_ok()
+        && let Some(Event::Key(k)) = event::read().ok()
+    {
+        if k.kind != KeyEventKind::Press {
+            return InputResult::Continue;
+        }
+
+        match (k.code, k.modifiers) {
+            (KeyCode::Char('q'), _)
+            | (KeyCode::Esc, _)
+            | (KeyCode::Char('c'), KeyModifiers::CONTROL) => return InputResult::Break,
+
+            (KeyCode::Char('v'), _) => {
+                app.next_view();
+            }
+
+            (KeyCode::Char('c'), _) => {
+                app.next_analyzer();
+            }
+
+            (KeyCode::Char('+'), _) | (KeyCode::Char('='), _) => {
+                app.zoom_in();
+            }
+            (KeyCode::Char('-'), _) => {
+                app.zoom_out();
+            }
+
+            (KeyCode::Left, _) => {
+                let step = max(1, app.hex_page_bytes) as i64;
+                app.scroll_by(-step);
+            }
+            (KeyCode::Right, _) => {
+                let step = max(1, app.hex_page_bytes) as i64;
+                app.scroll_by(step);
+            }
+
+            (KeyCode::PageUp, _) => {
+                let step = max(1, app.window_len) as i64;
+                app.scroll_by(-step);
+            }
+            (KeyCode::PageDown, _) => {
+                let step = max(1, app.window_len) as i64;
+                app.scroll_by(step);
+            }
+
+            // Hilbert cursor controls (only in Hilbert view)
+            (KeyCode::Char('h'), _) => app.move_hilbert_cursor(-1, 0),
+            (KeyCode::Char('l'), _) => app.move_hilbert_cursor(1, 0),
+            (KeyCode::Char('k'), _) => app.move_hilbert_cursor(0, -1),
+            (KeyCode::Char('j'), _) => app.move_hilbert_cursor(0, 1),
+
+            // Jump window to cursor cell start.
+            (KeyCode::Enter, _) => {
+                if app.view == ViewMode::Hilbert
+                    && let Some((abs_start, _abs_end, _v)) = app.hilbert_cursor_range()
+                {
+                    app.offset = abs_start;
+                    app.view = ViewMode::Hex;
+                    app.mark_dirty();
+                }
+            }
+
+            (KeyCode::Home, _) => app.jump_start(),
+            (KeyCode::End, _) => app.jump_end(),
+            _ => {}
+        }
+    }
+
+    InputResult::None
+}
+
+fn draw_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+) -> Result<(), anyhow::Error> {
+    terminal.draw(|f| {
+        app.ensure_size(f.area());
+        let analyzer = &app.analyzers[app.analyzer_idx];
+
+        let (hex_base_offset, hex_slice) = if app.view == ViewMode::Hilbert {
+            if let Some((abs_start, _abs_end, _v)) = app.hilbert_cursor_range() {
+                let rel = (abs_start - app.offset) as usize;
+                let rel = rel.min(app.window_data.len());
+                (abs_start, &app.window_data[rel..])
+            } else {
+                (app.offset, &app.window_data[..])
+            }
+        } else {
+            (app.offset, &app.window_data[..])
+        };
+
+        ui::draw(
+            f,
+            &app.path,
+            app.file_len,
+            app.offset,
+            app.window_len,
+            app.view,
+            analyzer.name(),
+            &app.window_data,
+            app.metric.as_ref(),
+            app.chart.as_ref(),
+            app.hilbert.as_ref(),
+            app.hilbert_cursor,
+            app.hilbert_cursor_range(),
+            hex_base_offset,
+            hex_slice,
+            app.suggest_cache
+                .as_ref()
+                .map(|c| &c.features)
+                .unwrap_or(&Features::default()),
+            app.suggest_cache
+                .as_ref()
+                .map(|c| c.suggestions.as_slice())
+                .unwrap_or(&[]),
+            &app.status,
+        );
+    })?;
     Ok(())
 }

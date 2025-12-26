@@ -60,6 +60,7 @@ pub struct HilbertCache {
     pub offset: u64,
     pub window_len: u64,
     pub analyzer_idx: usize,
+    pub xy_to_d: Vec<u32>,
     pub values_row_major: Vec<f64>, // length = side*side, indexed by y*side+x
 }
 

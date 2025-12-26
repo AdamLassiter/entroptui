@@ -64,6 +64,7 @@ pub fn draw_summary(
     window_data: &[u8],
     plot: Option<&ChartCache>,
     features: &Features,
+    hilbert_cursor_info: Option<(u64, u64, f64)>,
 ) {
     let block = Block::default().title("Summary").borders(Borders::ALL);
 
@@ -87,6 +88,19 @@ pub fn draw_summary(
         num_span(format!("{:.3}", std_bpb), color_for_std_bpb(std_bpb)),
         Span::raw(" bits/byte"),
     ]));
+
+    if let Some((abs_start, abs_end, v)) = hilbert_cursor_info {
+        summary_lines.push(Line::from(Span::styled(
+            format!(
+                "hilbert cursor: [0x{:X}..0x{:X}) len={} value={:.3}",
+                abs_start,
+                abs_end,
+                abs_end.saturating_sub(abs_start),
+                v
+            ),
+            Style::default().fg(Color::Cyan),
+        )));
+    }
 
     let printable_pct = features.printable_ratio * 100.0;
     summary_lines.push(Line::from(vec![

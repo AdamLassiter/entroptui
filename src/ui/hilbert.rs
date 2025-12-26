@@ -1,6 +1,6 @@
 use std::cmp::max;
 
-use crate::{App, cache::HilbertCache};
+use crate::{App, HilbertCursor, cache::HilbertCache, ui::ViewMode};
 
 use ratatui::{
     Frame,
@@ -35,6 +35,7 @@ impl App {
                 offset: self.offset,
                 window_len: self.window_len,
                 analyzer_idx: self.analyzer_idx,
+                xy_to_d: vec![0; cells],
                 values_row_major: vec![0.0; cells],
             });
             return;
@@ -64,12 +65,14 @@ impl App {
         });
 
         let mut values_row_major = vec![0.0f64; cells];
+        let mut xy_to_d = vec![0u32; cells];
         for (d, &val) in values_d.iter().enumerate() {
             let (x, y) = d2xy(side, d as u32);
             let x = x as usize;
             let y = y as usize;
             if x < side_usize && y < side_usize {
                 values_row_major[y * side_usize + x] = val;
+                xy_to_d[y * side_usize + x] = d as u32;
             }
         }
 
@@ -78,12 +81,80 @@ impl App {
             offset: self.offset,
             window_len: self.window_len,
             analyzer_idx: self.analyzer_idx,
+            xy_to_d,
             values_row_major,
         });
+
+        // Clamp cursor to new side if needed.
+        if let Some(mut c) = self.hilbert_cursor {
+            c.x = c.x.min(side.saturating_sub(1));
+            c.y = c.y.min(side.saturating_sub(1));
+            self.hilbert_cursor = Some(c);
+        }
+    }
+
+    pub fn move_hilbert_cursor(&mut self, dx: i16, dy: i16) {
+        if self.view != ViewMode::Hilbert {
+            return;
+        }
+        let Some(h) = self.hilbert.as_ref() else {
+            return;
+        };
+        let side = h.side;
+        let Some(mut c) = self.hilbert_cursor else {
+            self.hilbert_cursor = Some(HilbertCursor { x: 0, y: 0 });
+            return;
+        };
+
+        let nx = (c.x as i32 + dx as i32).clamp(0, side.saturating_sub(1) as i32);
+        let ny = (c.y as i32 + dy as i32).clamp(0, side.saturating_sub(1) as i32);
+        c.x = nx as u16;
+        c.y = ny as u16;
+        self.hilbert_cursor = Some(c);
+    }
+
+    pub fn hilbert_cursor_range(&self) -> Option<(u64, u64, f64)> {
+        // Returns (abs_start, abs_end_exclusive, value_norm)
+        let h = self.hilbert.as_ref()?;
+        let c = self.hilbert_cursor?;
+
+        let side = h.side as usize;
+        if side == 0 {
+            return None;
+        }
+
+        let x = c.x as usize;
+        let y = c.y as usize;
+        let idx = y * side + x;
+        if idx >= h.xy_to_d.len() {
+            return None;
+        }
+        let d = h.xy_to_d[idx] as usize;
+        let cells = side * side;
+        let chunk = (self.window_data.len() / cells).max(1);
+        let start = d * chunk;
+        if start >= self.window_data.len() {
+            return None;
+        }
+        let end = if d == cells - 1 {
+            self.window_data.len()
+        } else {
+            ((d + 1) * chunk).min(self.window_data.len())
+        };
+
+        let abs_start = self.offset + start as u64;
+        let abs_end = self.offset + end as u64;
+        let value = h.values_row_major.get(idx).copied().unwrap_or(0.0);
+        Some((abs_start, abs_end, value))
     }
 }
 
-pub fn draw_hilbert(f: &mut Frame, area: Rect, hilbert: Option<&HilbertCache>) {
+pub fn draw_hilbert(
+    f: &mut Frame,
+    area: Rect,
+    hilbert: Option<&HilbertCache>,
+    cursor: Option<HilbertCursor>,
+) {
     let block = Block::default()
         .title("Hilbert entropy map (heatmap: low blue → red high)")
         .borders(Borders::ALL);
@@ -107,7 +178,15 @@ pub fn draw_hilbert(f: &mut Frame, area: Rect, hilbert: Option<&HilbertCache>) {
         for x in 0..side {
             let v = h.values_row_major[y * side + x].clamp(0.0, 1.0);
             let (r, g, b) = heatmap_rgb(v);
-            spans.push(Span::styled("██", Style::default().fg(Color::Rgb(r, g, b))));
+            let is_cursor = cursor.is_some_and(|c| c.x as usize == x && c.y as usize == y);
+            let style = if is_cursor {
+                // Visible highlight independent of underlying heatmap.
+                Style::default().fg(Color::Black).bg(Color::White)
+            } else {
+                Style::default().fg(Color::Rgb(r, g, b))
+            };
+
+            spans.push(Span::styled("██", style));
         }
         lines.push(Line::from(spans));
     }
