@@ -6,14 +6,12 @@ mod suggestions;
 mod summary;
 
 use crate::{
-    App, ChartCache, HilbertCache, MetricCache, suggest::{Features, Suggestion}, ui::{
-        chart::{draw_chart, ensure_chart},
-        hex::draw_hex_viewer,
-        hilbert::{draw_hilbert, ensure_hilbert},
-        shortcuts::draw_shortcuts,
-        suggestions::draw_suggestions,
-        summary::draw_summary,
-    }
+    App, ChartCache, HilbertCache, MetricCache,
+    suggest::{Features, Suggestion},
+    ui::{
+        chart::draw_chart, hex::draw_hex_viewer, hilbert::draw_hilbert, shortcuts::draw_shortcuts,
+        suggestions::draw_suggestions, summary::draw_summary,
+    },
 };
 
 use ratatui::{
@@ -51,18 +49,21 @@ impl ViewMode {
     }
 }
 
-pub fn ensure_views(app: &mut App, size: Rect) -> u16 {
-    // For the Hilbert map: pick the largest power-of-two square that fits.
-    let max_side = min(size.width.saturating_sub(2), size.height.saturating_sub(2));
-    let side = hilbert::best_pow2_side(max_side as u16);
-    let bins = max(10, size.width.saturating_sub(2)) as u16;
+impl App {
+    pub fn ensure_views(&mut self, size: Rect) -> u16 {
+        // For the Hilbert map: pick the largest power-of-two square that fits.
+        let max_side = min(size.width.saturating_sub(2), size.height.saturating_sub(2));
+        let side = hilbert::best_pow2_side(max_side as u16);
+        let bins = max(10, size.width.saturating_sub(2)) as u16;
 
-    if side >= 2 {
-        ensure_hilbert(app, side);
+        if side >= 2 {
+            self.ensure_hilbert(side);
+        }
+        self.ensure_chart(bins);
+        self.ensure_hex(size);
+
+        bins
     }
-    ensure_chart(app, bins);
-
-    bins
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -102,7 +103,16 @@ pub fn draw(
         analyzer_name,
         status,
     );
-    draw_main(f, root[1], offset, view, metric, chart, hilbert, window_data);
+    draw_main(
+        f,
+        root[1],
+        offset,
+        view,
+        metric,
+        chart,
+        hilbert,
+        window_data,
+    );
     draw_footer(f, root[2], window_data, chart, features, suggestions);
 }
 
@@ -148,6 +158,7 @@ fn draw_header(
     f.render_widget(p, area);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_main(
     f: &mut Frame,
     area: Rect,

@@ -5,7 +5,7 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::{
     cmp::{max, min},
@@ -24,11 +24,12 @@ use suggest::{SuggestEngine, Suggestion};
 
 use crate::{
     analysis::{
-        bitplane::BitPlaneEntropyAnalyzer, ensure_metric, entropy::EntropyAnalyzer,
+        bitplane::BitPlaneEntropyAnalyzer,
+        entropy::{BucketSize, EntropyAnalyzer},
         spectral::SpectralFlatnessAnalyzer,
     },
-    suggest::{Features, ensure_suggestions},
-    ui::{ViewMode, ensure_views},
+    suggest::Features,
+    ui::ViewMode,
 };
 
 #[derive(Parser, Debug)]
@@ -188,7 +189,15 @@ impl std::fmt::Debug for App {
 impl App {
     fn new(path: PathBuf, file_len: u64, offset: u64, window_len: u64) -> Self {
         let analyzers: Vec<Box<dyn Analyzer>> = vec![
-            Box::new(EntropyAnalyzer::default()),
+            Box::new(EntropyAnalyzer {
+                bucket: BucketSize::B1,
+            }),
+            Box::new(EntropyAnalyzer {
+                bucket: BucketSize::B2,
+            }),
+            Box::new(EntropyAnalyzer {
+                bucket: BucketSize::B4,
+            }),
             Box::new(SpectralFlatnessAnalyzer::default()),
             Box::new(BitPlaneEntropyAnalyzer),
         ];
@@ -281,29 +290,12 @@ impl App {
         self.window_data = fw.read_window(self.offset, self.window_len)?;
         Ok(())
     }
-}
 
-fn compute_hex_page_bytes(size: Rect) -> u64 {
-    // Compute how many bytes the hex viewer can display (one "page").
-    // This mirrors the layout in ui.rs: root vertical split (3, main, 6)
-    // then main split horizontally (68% left, 32% right), and hex uses
-    // (height-2) lines at 16 bytes/line.
-    let root = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(10),
-            Constraint::Length(6),
-        ])
-        .split(size);
-    let main = root[1];
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(68), Constraint::Percentage(32)])
-        .split(main);
-    let hex_area: Rect = cols[1];
-    let inner_h = hex_area.height.saturating_sub(2) as u64;
-    inner_h.saturating_mul(16)
+    fn ensure_size(&mut self, size: Rect) {
+        let bins = self.ensure_views(size);
+        self.ensure_suggestions();
+        self.ensure_metric(bins);
+    }
 }
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, args: Args) -> Result<()> {
@@ -318,13 +310,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, args: Args) ->
 
     loop {
         terminal.draw(|f| {
-            let size = f.area();
-            app.hex_page_bytes = compute_hex_page_bytes(size);
-
-            let bins = ensure_views(&mut app, size);
-            ensure_suggestions(&mut app);
-            ensure_metric(&mut app, bins);
-
+            app.ensure_size(f.area());
             let analyzer = &app.analyzers[app.analyzer_idx];
 
             ui::draw(

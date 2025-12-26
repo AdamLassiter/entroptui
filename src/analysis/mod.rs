@@ -13,35 +13,37 @@ pub struct BinsReport {
     pub std: f64,              // variability indicator
 }
 
-pub fn ensure_metric(app: &mut App, bins: u16) {
-    let needs = match &app.metric {
-        None => true,
-        Some(p) => {
-            p.bins != bins
-                || p.offset != app.offset
-                || p.window_len != app.window_len
-                || p.analyzer_idx != app.analyzer_idx
+impl App {
+    pub fn ensure_metric(&mut self, bins: u16) {
+        let needs = match &self.metric {
+            None => true,
+            Some(p) => {
+                p.bins != bins
+                    || p.offset != self.offset
+                    || p.window_len != self.window_len
+                    || p.analyzer_idx != self.analyzer_idx
+            }
+        };
+        if !needs {
+            return;
         }
-    };
-    if !needs {
-        return;
+
+        let bins_usize = max(4, bins as usize);
+        let a = &self.analyzers[self.analyzer_idx];
+        let report = a.analyze_bins(&self.window_data, bins_usize);
+
+        self.metric = Some(MetricCache {
+            bins,
+            offset: self.offset,
+            window_len: self.window_len,
+            analyzer_idx: self.analyzer_idx,
+            analyzer_name: a.name(),
+            analyzer_label: a.metric_label(),
+            values: report.values_norm,
+            mean: report.mean,
+            std: report.std,
+        });
     }
-
-    let bins_usize = max(4, bins as usize);
-    let a = &app.analyzers[app.analyzer_idx];
-    let report = a.analyze_bins(&app.window_data, bins_usize);
-
-    app.metric = Some(MetricCache {
-        bins,
-        offset: app.offset,
-        window_len: app.window_len,
-        analyzer_idx: app.analyzer_idx,
-        analyzer_name: a.name(),
-        analyzer_label: a.metric_label(),
-        values: report.values_norm,
-        mean: report.mean,
-        std: report.std,
-    });
 }
 
 pub trait Analyzer: Send + Sync {

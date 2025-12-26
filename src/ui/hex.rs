@@ -1,10 +1,41 @@
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
+
+use crate::App;
+
+impl App {
+    pub fn ensure_hex(&mut self, size: Rect) {
+        self.hex_page_bytes = compute_hex_page_bytes(size);
+    }
+}
+
+fn compute_hex_page_bytes(size: Rect) -> u64 {
+    // Compute how many bytes the hex viewer can display (one "page").
+    // This mirrors the layout in ui.rs: root vertical split (3, main, 6)
+    // then main split horizontally (68% left, 32% right), and hex uses
+    // (height-2) lines at 16 bytes/line.
+    let root = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(10),
+            Constraint::Length(6),
+        ])
+        .split(size);
+    let main = root[1];
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(68), Constraint::Percentage(32)])
+        .split(main);
+    let hex_area: Rect = cols[1];
+    let inner_h = hex_area.height.saturating_sub(2) as u64;
+    inner_h.saturating_mul(16)
+}
 
 pub fn draw_hex_viewer(f: &mut Frame, area: Rect, offset: u64, window_data: &[u8]) {
     let block = Block::default()

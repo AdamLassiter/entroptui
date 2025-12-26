@@ -56,7 +56,6 @@ pub fn scan_magic(sample: &[u8]) -> Vec<MagicHit> {
         ("CUR", b"\x00\x00\x02\x00"),
         ("Photoshop PSD", b"8BPS"),
         ("OpenEXR", b"\x76\x2F\x31\x01"),
-
         // --- Archives / packaging ---
         ("ZIP (local file header)", b"PK\x03\x04"),
         ("ZIP (central directory)", b"PK\x01\x02"),
@@ -66,7 +65,6 @@ pub fn scan_magic(sample: &[u8]) -> Vec<MagicHit> {
         ("RAR (v5+)", b"Rar!\x1A\x07\x01\x00"),
         ("CAB", b"MSCF"),
         ("ar archive", b"!<arch>\n"),
-
         // --- Compression ---
         ("GZIP", b"\x1F\x8B"),
         ("Zstandard", b"\x28\xB5\x2F\xFD"),
@@ -76,7 +74,6 @@ pub fn scan_magic(sample: &[u8]) -> Vec<MagicHit> {
         ("LZIP", b"LZIP"),
         ("Unix compress (.Z)", b"\x1F\x9D"),
         ("LZMA (.lzma)", b"\x5D\x00\x00\x80\x00"),
-
         // --- Documents / structured data ---
         ("PDF", b"%PDF-"),
         ("PostScript", b"%!PS-Adobe-"),
@@ -85,7 +82,6 @@ pub fn scan_magic(sample: &[u8]) -> Vec<MagicHit> {
         ("Apache ORC", b"ORC"),
         ("bplist (binary plist)", b"bplist00"),
         ("Microsoft OLE2/CFBF", b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"),
-
         // --- Executables / bytecode ---
         ("ELF", b"\x7FELF"),
         ("PE/COFF (MZ)", b"MZ"),
@@ -93,25 +89,21 @@ pub fn scan_magic(sample: &[u8]) -> Vec<MagicHit> {
         ("Java class", b"\xCA\xFE\xBA\xBE"),
         ("Dalvik DEX", b"dex\n035\0"),
         ("Dalvik DEX (036)", b"dex\n036\0"),
-
         // --- Fonts ---
         ("TrueType font (TTF)", b"\x00\x01\x00\x00"),
         ("OpenType font (OTF)", b"OTTO"),
         ("WOFF", b"wOFF"),
         ("WOFF2", b"wOF2"),
-
         // --- Media ---
         ("Ogg", b"OggS"),
         ("FLAC", b"fLaC"),
         ("MIDI", b"MThd"),
         ("Matroska/WebM (EBML)", b"\x1A\x45\xDF\xA3"),
         ("MP3 (ID3 tag)", b"ID3"),
-
         // --- PCAP ---
         ("pcap (LE)", b"\xD4\xC3\xB2\xA1"),
         ("pcap (BE)", b"\xA1\xB2\xC3\xD4"),
         ("pcapng", b"\x0A\x0D\x0D\x0A"),
-
         // --- Text encodings / wrappers ---
         ("UTF-8 BOM", b"\xEF\xBB\xBF"),
         ("UTF-16 LE BOM", b"\xFF\xFE"),
@@ -136,7 +128,7 @@ pub fn scan_magic(sample: &[u8]) -> Vec<MagicHit> {
         ("Mach-O (CF FA ED FE)", [0xCF, 0xFA, 0xED, 0xFE]),
     ];
     for (name, sig) in macho {
-        if let Some(at) = find_subslice(sample, &sig) {
+        if let Some(at) = find_subslice(sample, sig) {
             push(name, at);
         }
     }
@@ -211,7 +203,9 @@ pub fn scan_magic(sample: &[u8]) -> Vec<MagicHit> {
             let look = &sample[i..sample.len().min(i + 64)];
             let printable = look
                 .iter()
-                .filter(|&&b| (0x20..=0x7E).contains(&b) || matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+                .filter(|&&b| {
+                    (0x20..=0x7E).contains(&b) || matches!(b, b' ' | b'\t' | b'\r' | b'\n')
+                })
                 .count();
             if printable as f64 / look.len().max(1) as f64 > 0.95 {
                 push("JSON (text, heuristic)", i);
@@ -222,7 +216,14 @@ pub fn scan_magic(sample: &[u8]) -> Vec<MagicHit> {
     hits
 }
 
-fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
+fn find_subslice<H, N>(hay: H, needle: N) -> Option<usize>
+where
+    H: AsRef<[u8]>,
+    N: AsRef<[u8]>,
+{
+    let hay = hay.as_ref();
+    let needle = needle.as_ref();
+
     if needle.is_empty() {
         return Some(0);
     }

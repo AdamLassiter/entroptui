@@ -11,74 +11,76 @@ use ratatui::{
 };
 use rayon::prelude::*;
 
-pub fn ensure_hilbert(app: &mut App, side: u16) {
-    let needs = match &app.hilbert {
-        None => true,
-        Some(h) => {
-            h.side != side
-                || h.offset != app.offset
-                || h.window_len != app.window_len
-                || h.analyzer_idx != app.analyzer_idx
-        }
-    };
-    if !needs {
-        return;
-    }
-
-    let side_usize = max(2, side as usize);
-    let cells = side_usize * side_usize;
-
-    if app.window_data.is_empty() {
-        app.hilbert = Some(HilbertCache {
-            side,
-            offset: app.offset,
-            window_len: app.window_len,
-            analyzer_idx: app.analyzer_idx,
-            values_row_major: vec![0.0; cells],
-        });
-        return;
-    }
-
-    // Compute entropy values per Hilbert-distance cell in parallel.
-    // Then remap into row-major for rendering.
-    let data = &app.window_data;
-    let analyzer = &app.analyzers[app.analyzer_idx];
-    let chunk = (data.len() / cells).max(1);
-
-    let mut values_d = vec![0.0f64; cells];
-    values_d.par_iter_mut().enumerate().for_each(|(d, slot)| {
-        let start = d * chunk;
-        if start >= data.len() {
-            *slot = 0.0;
+impl App {
+    pub fn ensure_hilbert(&mut self, side: u16) {
+        let needs = match &self.hilbert {
+            None => true,
+            Some(h) => {
+                h.side != side
+                    || h.offset != self.offset
+                    || h.window_len != self.window_len
+                    || h.analyzer_idx != self.analyzer_idx
+            }
+        };
+        if !needs {
             return;
         }
-        let end = if d == cells - 1 {
-            data.len()
-        } else {
-            (start + chunk).min(data.len())
-        };
 
-        // Prefer sparse counting for Hilbert to avoid huge per-cell allocations.
-        *slot = analyzer.value_norm_sparse(&data[start..end]);
-    });
+        let side_usize = max(2, side as usize);
+        let cells = side_usize * side_usize;
 
-    let mut values_row_major = vec![0.0f64; cells];
-    for (d, &val) in values_d.iter().enumerate() {
-        let (x, y) = d2xy(side, d as u32);
-        let x = x as usize;
-        let y = y as usize;
-        if x < side_usize && y < side_usize {
-            values_row_major[y * side_usize + x] = val;
+        if self.window_data.is_empty() {
+            self.hilbert = Some(HilbertCache {
+                side,
+                offset: self.offset,
+                window_len: self.window_len,
+                analyzer_idx: self.analyzer_idx,
+                values_row_major: vec![0.0; cells],
+            });
+            return;
         }
-    }
 
-    app.hilbert = Some(HilbertCache {
-        side,
-        offset: app.offset,
-        window_len: app.window_len,
-        analyzer_idx: app.analyzer_idx,
-        values_row_major,
-    });
+        // Compute entropy values per Hilbert-distance cell in parallel.
+        // Then remap into row-major for rendering.
+        let data = &self.window_data;
+        let analyzer = &self.analyzers[self.analyzer_idx];
+        let chunk = (data.len() / cells).max(1);
+
+        let mut values_d = vec![0.0f64; cells];
+        values_d.par_iter_mut().enumerate().for_each(|(d, slot)| {
+            let start = d * chunk;
+            if start >= data.len() {
+                *slot = 0.0;
+                return;
+            }
+            let end = if d == cells - 1 {
+                data.len()
+            } else {
+                (start + chunk).min(data.len())
+            };
+
+            // Prefer sparse counting for Hilbert to avoid huge per-cell allocations.
+            *slot = analyzer.value_norm_sparse(&data[start..end]);
+        });
+
+        let mut values_row_major = vec![0.0f64; cells];
+        for (d, &val) in values_d.iter().enumerate() {
+            let (x, y) = d2xy(side, d as u32);
+            let x = x as usize;
+            let y = y as usize;
+            if x < side_usize && y < side_usize {
+                values_row_major[y * side_usize + x] = val;
+            }
+        }
+
+        self.hilbert = Some(HilbertCache {
+            side,
+            offset: self.offset,
+            window_len: self.window_len,
+            analyzer_idx: self.analyzer_idx,
+            values_row_major,
+        });
+    }
 }
 
 pub fn draw_hilbert(f: &mut Frame, area: Rect, hilbert: Option<&HilbertCache>) {

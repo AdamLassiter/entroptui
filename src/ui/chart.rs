@@ -10,27 +10,34 @@ use ratatui::{
     widgets::{Axis, Block, Borders, Chart, Dataset, GraphType},
 };
 
-pub fn ensure_chart(app: &mut App, bins: u16) {
-    let needs = match &app.metric {
-        None => true,
-        Some(p) => p.bins != bins || p.offset != app.offset || p.window_len != app.window_len,
-    };
-    if !needs {
-        return;
+impl App {
+    pub fn ensure_chart(&mut self, bins: u16) {
+        let needs = match &self.chart {
+            None => true,
+            Some(p) => {
+                p.bins != bins
+                    || p.offset != self.offset
+                    || p.window_len != self.window_len
+                    || p.analyzer_idx != self.analyzer_idx
+            }
+        };
+        if !needs {
+            return;
+        }
+
+        let bins_usize = max(4, bins as usize);
+        let report = self.analyzers[self.analyzer_idx].analyze_bins(&self.window_data, bins_usize);
+
+        self.chart = Some(ChartCache {
+            bins,
+            offset: self.offset,
+            window_len: self.window_len,
+            analyzer_idx: self.analyzer_idx,
+            values: report.values_norm,
+            mean: report.mean,
+            std: report.std,
+        });
     }
-
-    let bins_usize = max(4, bins as usize);
-    let report = app.analyzers[app.analyzer_idx].analyze_bins(&app.window_data, bins_usize);
-
-    app.chart = Some(ChartCache {
-        bins,
-        offset: app.offset,
-        window_len: app.window_len,
-        analyzer_idx: app.analyzer_idx,
-        values: report.values_norm,
-        mean: report.mean,
-        std: report.std,
-    });
 }
 
 pub fn draw_chart(

@@ -9,6 +9,55 @@ mod text;
 
 use crate::{App, SuggestCache, suggest::magic::MagicHit, ui::ViewMode};
 
+impl App {
+    pub fn ensure_suggestions(&mut self) {
+        let Some(plot) = self.metric.as_ref() else {
+            return;
+        };
+
+        // In Hex view mode, compute features on the bytes actually visible in the
+        // hex viewer (the "hex window"), not the entire analysis window.
+        let (feature_data, feature_len) = if self.view == ViewMode::Hex {
+            let n = (self.hex_page_bytes as usize).max(1);
+            let end = self.window_data.len().min(n);
+            (&self.window_data[..end], end as u64)
+        } else {
+            (&self.window_data[..], self.window_data.len() as u64)
+        };
+
+        let needs = match &self.suggest_cache {
+            None => true,
+            Some(c) => {
+                c.offset != self.offset
+                    || c.window_len != self.window_len
+                    || c.view != self.view
+                    || c.feature_len != feature_len
+            }
+        };
+        if !needs {
+            return;
+        }
+
+        let input = SuggestInput {
+            data: feature_data,
+            offset: self.offset,
+            entropy_mean_bpb: plot.mean,
+            entropy_std_bpb: plot.std,
+            entropy_bins_norm: Some(&plot.values),
+        };
+
+        let (features, suggestions) = self.suggest_engine.suggest(input);
+        self.suggest_cache = Some(SuggestCache {
+            offset: self.offset,
+            window_len: self.window_len,
+            view: self.view,
+            feature_len,
+            features,
+            suggestions,
+        });
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Suggestion {
     pub label: &'static str,
@@ -270,51 +319,4 @@ impl Default for SuggestEngine {
             .with(mixed_region::MixedRegionsHeuristic)
             .with(structured_bin::StructuredBinaryHeuristic)
     }
-}
-
-pub fn ensure_suggestions(app: &mut App) {
-    let Some(plot) = app.metric.as_ref() else {
-        return;
-    };
-
-    // In Hex view mode, compute features on the bytes actually visible in the
-    // hex viewer (the "hex window"), not the entire analysis window.
-    let (feature_data, feature_len) = if app.view == ViewMode::Hex {
-        let n = (app.hex_page_bytes as usize).max(1);
-        let end = app.window_data.len().min(n);
-        (&app.window_data[..end], end as u64)
-    } else {
-        (&app.window_data[..], app.window_data.len() as u64)
-    };
-
-    let needs = match &app.suggest_cache {
-        None => true,
-        Some(c) => {
-            c.offset != app.offset
-                || c.window_len != app.window_len
-                || c.view != app.view
-                || c.feature_len != feature_len
-        }
-    };
-    if !needs {
-        return;
-    }
-
-    let input = SuggestInput {
-        data: feature_data,
-        offset: app.offset,
-        entropy_mean_bpb: plot.mean,
-        entropy_std_bpb: plot.std,
-        entropy_bins_norm: Some(&plot.values),
-    };
-
-    let (features, suggestions) = app.suggest_engine.suggest(input);
-    app.suggest_cache = Some(SuggestCache {
-        offset: app.offset,
-        window_len: app.window_len,
-        view: app.view,
-        feature_len,
-        features,
-        suggestions,
-    });
 }
