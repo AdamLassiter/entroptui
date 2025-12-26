@@ -5,15 +5,16 @@ mod shortcuts;
 mod suggestions;
 mod summary;
 
-use crate::analysis::BucketSize;
-use crate::suggest::{Features, Suggestion};
-use crate::ui::chart::draw_chart;
-use crate::ui::hex::draw_hex_viewer;
-use crate::ui::hilbert::draw_hilbert;
-use crate::ui::shortcuts::draw_shortcuts;
-use crate::ui::suggestions::draw_suggestions;
-use crate::ui::summary::draw_summary;
-use crate::{App, HilbertCache, PlotCache};
+use crate::{
+    App, ChartCache, HilbertCache, MetricCache, suggest::{Features, Suggestion}, ui::{
+        chart::{draw_chart, ensure_chart},
+        hex::draw_hex_viewer,
+        hilbert::{draw_hilbert, ensure_hilbert},
+        shortcuts::draw_shortcuts,
+        suggestions::draw_suggestions,
+        summary::draw_summary,
+    }
+};
 
 use ratatui::{
     Frame,
@@ -50,16 +51,18 @@ impl ViewMode {
     }
 }
 
-pub fn ensure_views(app: &mut App, size: Rect) {
+pub fn ensure_views(app: &mut App, size: Rect) -> u16 {
     // For the Hilbert map: pick the largest power-of-two square that fits.
     let max_side = min(size.width.saturating_sub(2), size.height.saturating_sub(2));
     let side = hilbert::best_pow2_side(max_side as u16);
-    if side >= 2 {
-        hilbert::ensure_hilbert(app, side);
-    }
-
     let bins = max(10, size.width.saturating_sub(2)) as u16;
-    chart::ensure_plot(app, bins);
+
+    if side >= 2 {
+        ensure_hilbert(app, side);
+    }
+    ensure_chart(app, bins);
+
+    bins
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -69,10 +72,11 @@ pub fn draw(
     file_len: u64,
     offset: u64,
     window_len: u64,
-    bucket: BucketSize,
     view: ViewMode,
+    analyzer_name: &str,
     window_data: &[u8],
-    plot: Option<&PlotCache>,
+    metric: Option<&MetricCache>,
+    chart: Option<&ChartCache>,
     hilbert: Option<&HilbertCache>,
     features: &Features,
     suggestions: &[Suggestion],
@@ -94,12 +98,12 @@ pub fn draw(
         file_len,
         offset,
         window_len,
-        bucket,
         view.label(),
+        analyzer_name,
         status,
     );
-    draw_main(f, root[1], offset, view, plot, hilbert, window_data);
-    draw_footer(f, root[2], window_data, plot, features, suggestions);
+    draw_main(f, root[1], offset, view, metric, chart, hilbert, window_data);
+    draw_footer(f, root[2], window_data, chart, features, suggestions);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -110,18 +114,18 @@ fn draw_header(
     file_len: u64,
     offset: u64,
     window_len: u64,
-    bucket: BucketSize,
     view_label: &str,
+    analyzer_name: &str,
     status: &str,
 ) {
     let title = format!(
-        "Entropy TUI | {} | view={} | file={} bytes | offset={} window={} bucket={}",
+        "Entropy TUI | {} | view={} | analyzer={} | file={} bytes | offset={} window={}",
         path.display(),
         view_label,
+        analyzer_name,
         file_len,
         offset,
         window_len,
-        bucket.label()
     );
 
     let mut lines = vec![Line::from(vec![Span::styled(
@@ -136,7 +140,7 @@ fn draw_header(
         )]));
     } else {
         lines.push(Line::from(
-            "Controls: ←/→ scroll  PgUp/PgDn page  +/- zoom  b bucket  v view  q quit",
+            "Controls: ←/→ scroll | PgUp/PgDn page | +/- zoom | v view | q quit",
         ));
     }
 
@@ -149,13 +153,14 @@ fn draw_main(
     area: Rect,
     offset: u64,
     view: ViewMode,
-    plot: Option<&PlotCache>,
+    metric: Option<&MetricCache>,
+    chart: Option<&ChartCache>,
     hilbert: Option<&HilbertCache>,
     window_data: &[u8],
 ) {
     match view {
         ViewMode::Hilbert => draw_hilbert(f, area, hilbert),
-        ViewMode::Chart => draw_chart(f, area, plot),
+        ViewMode::Chart => draw_chart(f, area, metric, chart),
         ViewMode::Hex => draw_hex_viewer(f, area, offset, window_data),
     }
 }
@@ -164,7 +169,7 @@ fn draw_footer(
     f: &mut Frame,
     area: Rect,
     window_data: &[u8],
-    plot: Option<&PlotCache>,
+    plot: Option<&ChartCache>,
     features: &Features,
     suggestions: &[Suggestion],
 ) {

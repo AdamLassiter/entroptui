@@ -1,6 +1,6 @@
 use std::cmp::max;
 
-use crate::{App, PlotCache};
+use crate::{App, ChartCache, MetricCache};
 
 use ratatui::{
     Frame,
@@ -10,42 +10,41 @@ use ratatui::{
     widgets::{Axis, Block, Borders, Chart, Dataset, GraphType},
 };
 
-pub fn ensure_plot(app: &mut App, bins: u16) {
-    let needs = match &app.plot {
+pub fn ensure_chart(app: &mut App, bins: u16) {
+    let needs = match &app.metric {
         None => true,
-        Some(p) => {
-            p.bins != bins
-                || p.bucket != app.bucket
-                || p.offset != app.offset
-                || p.window_len != app.window_len
-        }
+        Some(p) => p.bins != bins || p.offset != app.offset || p.window_len != app.window_len,
     };
     if !needs {
         return;
     }
 
     let bins_usize = max(4, bins as usize);
-    let report = app
-        .analyzer
-        .analyze_entropy_bins(&app.window_data, app.bucket, bins_usize);
+    let report = app.analyzers[app.analyzer_idx].analyze_bins(&app.window_data, bins_usize);
 
-    app.plot = Some(PlotCache {
+    app.chart = Some(ChartCache {
         bins,
-        bucket: app.bucket,
         offset: app.offset,
         window_len: app.window_len,
+        analyzer_idx: app.analyzer_idx,
         values: report.values_norm,
-        mean_bits_per_byte: report.mean_bits_per_byte,
-        std_bits_per_byte: report.std_bits_per_byte,
+        mean: report.mean,
+        std: report.std,
     });
 }
 
-pub fn draw_chart(f: &mut Frame, area: Rect, plot: Option<&PlotCache>) {
-    let block = Block::default()
-        .title("Entropy (normalized 0..1)")
-        .borders(Borders::ALL);
+pub fn draw_chart(
+    f: &mut Frame,
+    area: Rect,
+    metric: Option<&MetricCache>,
+    chart: Option<&ChartCache>,
+) {
+    let title = metric
+        .map(|p| format!("{} ({})", p.analyzer_name, p.analyzer_label))
+        .unwrap_or_else(|| "Metric".to_string());
+    let block = Block::default().title(title).borders(Borders::ALL);
 
-    let Some(plot) = plot else {
+    let Some(plot) = chart else {
         f.render_widget(block, area);
         return;
     };
@@ -76,7 +75,7 @@ pub fn draw_chart(f: &mut Frame, area: Rect, plot: Option<&PlotCache>) {
         )
         .y_axis(
             Axis::default()
-                .title("H")
+                .title("0..1")
                 .bounds([0.0, 1.0])
                 .style(Style::default().fg(Color::Gray)),
         );

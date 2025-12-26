@@ -7,7 +7,7 @@ mod mixed_region;
 mod structured_bin;
 mod text;
 
-use crate::{App, SuggestCache, analysis::BucketSize, suggest::magic::MagicHit, ui::ViewMode};
+use crate::{App, SuggestCache, suggest::magic::MagicHit, ui::ViewMode};
 
 #[derive(Clone, Debug)]
 pub struct Suggestion {
@@ -34,7 +34,6 @@ impl Suggestion {
 pub struct SuggestInput<'a> {
     pub data: &'a [u8],
     pub offset: u64,
-    pub bucket: BucketSize,
     pub entropy_mean_bpb: f64, // 0..8
     pub entropy_std_bpb: f64,
     pub entropy_bins_norm: Option<&'a [f64]>, // 0..1, optional
@@ -274,7 +273,7 @@ impl Default for SuggestEngine {
 }
 
 pub fn ensure_suggestions(app: &mut App) {
-    let Some(plot) = app.plot.as_ref() else {
+    let Some(plot) = app.metric.as_ref() else {
         return;
     };
 
@@ -291,8 +290,7 @@ pub fn ensure_suggestions(app: &mut App) {
     let needs = match &app.suggest_cache {
         None => true,
         Some(c) => {
-            c.bucket != app.bucket
-                || c.offset != app.offset
+            c.offset != app.offset
                 || c.window_len != app.window_len
                 || c.view != app.view
                 || c.feature_len != feature_len
@@ -305,15 +303,13 @@ pub fn ensure_suggestions(app: &mut App) {
     let input = SuggestInput {
         data: feature_data,
         offset: app.offset,
-        bucket: app.bucket,
-        entropy_mean_bpb: plot.mean_bits_per_byte,
-        entropy_std_bpb: plot.std_bits_per_byte,
+        entropy_mean_bpb: plot.mean,
+        entropy_std_bpb: plot.std,
         entropy_bins_norm: Some(&plot.values),
     };
 
     let (features, suggestions) = app.suggest_engine.suggest(input);
     app.suggest_cache = Some(SuggestCache {
-        bucket: app.bucket,
         offset: app.offset,
         window_len: app.window_len,
         view: app.view,

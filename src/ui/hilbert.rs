@@ -1,6 +1,6 @@
 use std::cmp::max;
 
-use crate::{App, HilbertCache, analysis};
+use crate::{App, HilbertCache};
 
 use ratatui::{
     Frame,
@@ -16,9 +16,9 @@ pub fn ensure_hilbert(app: &mut App, side: u16) {
         None => true,
         Some(h) => {
             h.side != side
-                || h.bucket != app.bucket
                 || h.offset != app.offset
                 || h.window_len != app.window_len
+                || h.analyzer_idx != app.analyzer_idx
         }
     };
     if !needs {
@@ -31,9 +31,9 @@ pub fn ensure_hilbert(app: &mut App, side: u16) {
     if app.window_data.is_empty() {
         app.hilbert = Some(HilbertCache {
             side,
-            bucket: app.bucket,
             offset: app.offset,
             window_len: app.window_len,
+            analyzer_idx: app.analyzer_idx,
             values_row_major: vec![0.0; cells],
         });
         return;
@@ -42,7 +42,7 @@ pub fn ensure_hilbert(app: &mut App, side: u16) {
     // Compute entropy values per Hilbert-distance cell in parallel.
     // Then remap into row-major for rendering.
     let data = &app.window_data;
-    let bucket = app.bucket;
+    let analyzer = &app.analyzers[app.analyzer_idx];
     let chunk = (data.len() / cells).max(1);
 
     let mut values_d = vec![0.0f64; cells];
@@ -58,8 +58,8 @@ pub fn ensure_hilbert(app: &mut App, side: u16) {
             (start + chunk).min(data.len())
         };
 
-        // Use sparse counting for Hilbert to avoid huge per-cell allocations.
-        *slot = analysis::entropy_norm_sparse(&data[start..end], bucket);
+        // Prefer sparse counting for Hilbert to avoid huge per-cell allocations.
+        *slot = analyzer.value_norm_sparse(&data[start..end]);
     });
 
     let mut values_row_major = vec![0.0f64; cells];
@@ -74,16 +74,16 @@ pub fn ensure_hilbert(app: &mut App, side: u16) {
 
     app.hilbert = Some(HilbertCache {
         side,
-        bucket: app.bucket,
         offset: app.offset,
         window_len: app.window_len,
+        analyzer_idx: app.analyzer_idx,
         values_row_major,
     });
 }
 
 pub fn draw_hilbert(f: &mut Frame, area: Rect, hilbert: Option<&HilbertCache>) {
     let block = Block::default()
-        .title("Hilbert entropy map (heatmap: low blue→cyan→green→yellow→red high)")
+        .title("Hilbert entropy map (heatmap: low blue → red high)")
         .borders(Borders::ALL);
 
     let Some(h) = hilbert else {

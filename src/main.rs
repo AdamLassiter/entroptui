@@ -19,10 +19,14 @@ mod analysis;
 mod suggest;
 mod ui;
 
-use analysis::{Analyzer, BucketSize, EntropyAnalyzer};
+use analysis::Analyzer;
 use suggest::{SuggestEngine, Suggestion};
 
 use crate::{
+    analysis::{
+        bitplane::BitPlaneEntropyAnalyzer, ensure_metric, entropy::EntropyAnalyzer,
+        spectral::SpectralFlatnessAnalyzer,
+    },
     suggest::{Features, ensure_suggestions},
     ui::{ViewMode, ensure_views},
 };
@@ -99,28 +103,40 @@ impl FileWindow {
 }
 
 #[derive(Clone, Debug)]
-struct PlotCache {
+struct MetricCache {
     bins: u16,
-    bucket: BucketSize,
     offset: u64,
     window_len: u64,
-    values: Vec<f64>, // 0..1 (normalized)
-    mean_bits_per_byte: f64,
-    std_bits_per_byte: f64,
+    analyzer_idx: usize,
+    analyzer_name: &'static str,
+    analyzer_label: &'static str,
+    values: Vec<f64>, // 0..1
+    mean: f64,
+    std: f64,
+}
+
+#[derive(Clone, Debug)]
+struct ChartCache {
+    bins: u16,
+    offset: u64,
+    window_len: u64,
+    analyzer_idx: usize,
+    values: Vec<f64>, // 0..1
+    mean: f64,
+    std: f64,
 }
 
 #[derive(Clone, Debug)]
 struct HilbertCache {
     side: u16, // grid is side x side, side must be power-of-two
-    bucket: BucketSize,
     offset: u64,
     window_len: u64,
+    analyzer_idx: usize,
     values_row_major: Vec<f64>, // length = side*side, indexed by y*side+x
 }
 
 #[derive(Clone, Debug)]
 struct SuggestCache {
-    bucket: BucketSize,
     offset: u64,
     window_len: u64,
     view: ViewMode,
@@ -135,17 +151,19 @@ struct App {
 
     offset: u64,
     window_len: u64,
-    bucket: BucketSize,
     view: ViewMode,
     hex_page_bytes: u64,
 
     window_data: Vec<u8>,
 
+    analyzers: Vec<Box<dyn Analyzer>>,
+    analyzer_idx: usize,
+
     suggest_engine: SuggestEngine,
     suggest_cache: Option<SuggestCache>,
 
-    analyzer: Box<dyn Analyzer>,
-    plot: Option<PlotCache>,
+    metric: Option<MetricCache>,
+    chart: Option<ChartCache>,
     hilbert: Option<HilbertCache>,
 
     status: String,
@@ -159,9 +177,8 @@ impl std::fmt::Debug for App {
             .field("file_len", &self.file_len)
             .field("offset", &self.offset)
             .field("window_len", &self.window_len)
-            .field("bucket", &self.bucket)
             .field("window_data", &self.window_data)
-            .field("plot", &self.plot)
+            .field("plot", &self.metric)
             .field("status", &self.status)
             .field("dirty", &self.dirty)
             .finish()
@@ -170,19 +187,25 @@ impl std::fmt::Debug for App {
 
 impl App {
     fn new(path: PathBuf, file_len: u64, offset: u64, window_len: u64) -> Self {
+        let analyzers: Vec<Box<dyn Analyzer>> = vec![
+            Box::new(EntropyAnalyzer::default()),
+            Box::new(SpectralFlatnessAnalyzer::default()),
+            Box::new(BitPlaneEntropyAnalyzer),
+        ];
         Self {
             path,
             file_len,
             offset: min(offset, file_len),
             window_len: max(4 * 1024, window_len),
-            bucket: BucketSize::B1,
             view: ViewMode::Chart,
             hex_page_bytes: 0,
             suggest_engine: SuggestEngine::default(),
             suggest_cache: None,
+            analyzers,
+            analyzer_idx: 0,
             window_data: Vec::new(),
-            analyzer: Box::new(EntropyAnalyzer),
-            plot: None,
+            metric: None,
+            chart: None,
             hilbert: None,
             status: String::new(),
             dirty: true,
@@ -200,17 +223,20 @@ impl App {
     fn mark_dirty(&mut self) {
         self.dirty = true;
         self.suggest_cache = None;
+        self.metric = None;
     }
 
-    fn set_bucket(&mut self, b: BucketSize) {
-        self.bucket = b;
-        self.mark_dirty();
+    fn next_analyzer(&mut self) {
+        if self.analyzers.is_empty() {
+            return;
+        }
+        self.analyzer_idx = (self.analyzer_idx + 1) % self.analyzers.len();
+        self.metric = None;
+        self.hilbert = None;
     }
 
-    fn toggle_view(&mut self) {
+    fn next_view(&mut self) {
         self.view = self.view.next();
-        // The suggestion feature window may change (e.g. Hex mode uses only the
-        // visible hex page), so invalidate cached suggestions.
         self.suggest_cache = None;
     }
 
@@ -295,8 +321,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, args: Args) ->
             let size = f.area();
             app.hex_page_bytes = compute_hex_page_bytes(size);
 
-            ensure_views(&mut app, size);
+            let bins = ensure_views(&mut app, size);
             ensure_suggestions(&mut app);
+            ensure_metric(&mut app, bins);
+
+            let analyzer = &app.analyzers[app.analyzer_idx];
 
             ui::draw(
                 f,
@@ -304,10 +333,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, args: Args) ->
                 app.file_len,
                 app.offset,
                 app.window_len,
-                app.bucket,
                 app.view,
+                analyzer.name(),
                 &app.window_data,
-                app.plot.as_ref(),
+                app.metric.as_ref(),
+                app.chart.as_ref(),
                 app.hilbert.as_ref(),
                 app.suggest_cache
                     .as_ref()
@@ -330,14 +360,16 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, args: Args) ->
             }
 
             match (k.code, k.modifiers) {
-                (KeyCode::Char('q'), _) | (KeyCode::Esc, _) => break,
-
-                (KeyCode::Char('b'), _) => {
-                    app.set_bucket(app.bucket.next());
-                }
+                (KeyCode::Char('q'), _)
+                | (KeyCode::Esc, _)
+                | (KeyCode::Char('c'), KeyModifiers::CONTROL) => break,
 
                 (KeyCode::Char('v'), _) => {
-                    app.toggle_view();
+                    app.next_view();
+                }
+
+                (KeyCode::Char('c'), _) => {
+                    app.next_analyzer();
                 }
 
                 (KeyCode::Char('+'), _) | (KeyCode::Char('='), _) => {
@@ -367,8 +399,6 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, args: Args) ->
 
                 (KeyCode::Home, _) => app.jump_start(),
                 (KeyCode::End, _) => app.jump_end(),
-
-                (KeyCode::Char('c'), KeyModifiers::CONTROL) => break,
                 _ => {}
             }
         }

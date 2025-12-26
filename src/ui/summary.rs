@@ -2,10 +2,11 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::{Color, Style},
-    text::{Line, Span}, widgets::{Block, Borders, Paragraph, Wrap},
+    text::{Line, Span},
+    widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use crate::{PlotCache, suggest::Features};
+use crate::{ChartCache, suggest::Features};
 
 fn color_for_entropy_bpb(v: f64) -> Color {
     // 0..8, higher == "bigger"
@@ -61,14 +62,12 @@ pub fn draw_summary(
     f: &mut Frame,
     area: Rect,
     window_data: &[u8],
-    plot: Option<&PlotCache>,
+    plot: Option<&ChartCache>,
     features: &Features,
 ) {
     let block = Block::default().title("Summary").borders(Borders::ALL);
 
-    let (mean_bpb, std_bpb) = plot
-        .map(|p| (p.mean_bits_per_byte, p.std_bits_per_byte))
-        .unwrap_or((0.0, 0.0));
+    let (mean_bpb, std_bpb) = plot.map(|p| (p.mean, p.std)).unwrap_or((0.0, 0.0));
 
     let mut summary_lines = Vec::new();
 
