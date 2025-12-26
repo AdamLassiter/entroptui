@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use crate::{ChartCache, suggest::Features};
+use crate::{cache::ChartCache, suggest::Features};
 
 fn color_for_entropy_bpb(v: f64) -> Color {
     // 0..8, higher == "bigger"

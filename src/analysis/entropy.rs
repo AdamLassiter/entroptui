@@ -23,14 +23,6 @@ impl BucketSize {
             BucketSize::B4 => 4,
         }
     }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            BucketSize::B1 => "1 byte",
-            BucketSize::B2 => "2 bytes",
-            BucketSize::B4 => "4 bytes",
-        }
-    }
 }
 
 impl EntropyAnalyzer {

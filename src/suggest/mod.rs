@@ -7,11 +7,12 @@ mod mixed_region;
 mod structured_bin;
 mod text;
 
-use crate::{App, SuggestCache, suggest::magic::MagicHit, ui::ViewMode};
+use crate::{App, cache::SuggestCache, suggest::magic::MagicHit, ui::ViewMode};
 
 impl App {
     pub fn ensure_suggestions(&mut self) {
-        let Some(plot) = self.metric.as_ref() else {
+        // Suggestions are entropy-based; do not depend on selected metric (Single/Multi).
+        let Some(chart) = self.chart.as_ref() else {
             return;
         };
 
@@ -41,12 +42,16 @@ impl App {
         let input = SuggestInput {
             data: feature_data,
             offset: self.offset,
-            entropy_mean_bpb: plot.mean,
-            entropy_std_bpb: plot.std,
-            entropy_bins_norm: Some(&plot.values),
+            entropy_mean_bpb: chart.mean,
+            entropy_std_bpb: chart.std,
+            entropy_bins_norm: Some(&chart.values),
         };
 
+        // Keep your existing engine return type:
+        // - if it returns (features, suggestions), keep this
+        // - if it returns just suggestions, drop `features`
         let (features, suggestions) = self.suggest_engine.suggest(input);
+
         self.suggest_cache = Some(SuggestCache {
             offset: self.offset,
             window_len: self.window_len,

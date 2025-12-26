@@ -14,14 +14,22 @@ impl Heuristic for CompressedVsEncryptedHeuristic {
         let has_compress_magic = feats.magic_hits.iter().any(|m| {
             matches!(
                 m.name,
-                "GZIP"
+                "ZIP (local file header)"
+                    | "ZIP (central directory)"
+                    | "ZIP (end of central dir)"
+                    | "7-Zip"
+                    | "RAR (v1.5+)"
+                    | "RAR (v5+)"
+                    | "CAB"
+                    | "ar archive"
+                    | "GZIP"
                     | "Zstandard"
                     | "XZ"
                     | "Bzip2"
-                    | "ZIP (local file header)"
-                    | "ZIP (central directory)"
-                    | "zlib/deflate (0x78 ?? header)"
-                    | "PNG"
+                    | "LZ4 frame"
+                    | "LZIP"
+                    | "Unix compress (.Z)"
+                    | "LZMA (.lzma)"
             )
         });
 

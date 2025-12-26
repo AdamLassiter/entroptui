@@ -16,11 +16,12 @@ use std::{
 };
 
 mod analysis;
+mod cache;
 mod suggest;
 mod ui;
 
 use analysis::Analyzer;
-use suggest::{SuggestEngine, Suggestion};
+use suggest::SuggestEngine;
 
 use crate::{
     analysis::{
@@ -28,6 +29,7 @@ use crate::{
         entropy::{BucketSize, EntropyAnalyzer},
         spectral::SpectralFlatnessAnalyzer,
     },
+    cache::{ChartCache, HilbertCache, MetricCache, SuggestCache},
     suggest::Features,
     ui::ViewMode,
 };
@@ -101,49 +103,6 @@ impl FileWindow {
         buf.truncate(total);
         Ok(buf)
     }
-}
-
-#[derive(Clone, Debug)]
-struct MetricCache {
-    bins: u16,
-    offset: u64,
-    window_len: u64,
-    analyzer_idx: usize,
-    analyzer_name: &'static str,
-    analyzer_label: &'static str,
-    values: Vec<f64>, // 0..1
-    mean: f64,
-    std: f64,
-}
-
-#[derive(Clone, Debug)]
-struct ChartCache {
-    bins: u16,
-    offset: u64,
-    window_len: u64,
-    analyzer_idx: usize,
-    values: Vec<f64>, // 0..1
-    mean: f64,
-    std: f64,
-}
-
-#[derive(Clone, Debug)]
-struct HilbertCache {
-    side: u16, // grid is side x side, side must be power-of-two
-    offset: u64,
-    window_len: u64,
-    analyzer_idx: usize,
-    values_row_major: Vec<f64>, // length = side*side, indexed by y*side+x
-}
-
-#[derive(Clone, Debug)]
-struct SuggestCache {
-    offset: u64,
-    window_len: u64,
-    view: ViewMode,
-    feature_len: u64,
-    features: Features,
-    suggestions: Vec<Suggestion>,
 }
 
 struct App {

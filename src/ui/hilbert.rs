@@ -1,6 +1,6 @@
 use std::cmp::max;
 
-use crate::{App, HilbertCache};
+use crate::{App, cache::HilbertCache};
 
 use ratatui::{
     Frame,

@@ -6,7 +6,7 @@ mod suggestions;
 mod summary;
 
 use crate::{
-    App, ChartCache, HilbertCache, MetricCache,
+    App, cache::{ChartCache, HilbertCache, MetricCache},
     suggest::{Features, Suggestion},
     ui::{
         chart::draw_chart, hex::draw_hex_viewer, hilbert::draw_hilbert, shortcuts::draw_shortcuts,
