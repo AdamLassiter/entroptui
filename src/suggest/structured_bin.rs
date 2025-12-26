@@ -3,10 +3,6 @@ use crate::suggest::{Features, Heuristic, SuggestInput, Suggestion};
 pub struct StructuredBinaryHeuristic;
 
 impl Heuristic for StructuredBinaryHeuristic {
-    fn name(&self) -> &'static str {
-        "structured-binary"
-    }
-
     fn apply(&self, input: &SuggestInput, feats: &Features, out: &mut Vec<Suggestion>) {
         let h = input.entropy_mean_bpb.clamp(0.0, 8.0);
 
@@ -34,5 +30,32 @@ impl Heuristic for StructuredBinaryHeuristic {
                 )),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_mid_entropy_structured() {
+        let feats = Features {
+            zero_ratio: 0.1,
+            printable_ratio: 0.5,
+            chi_square_256: 2000.0,
+            adjacent_equal_ratio: 0.2,
+            ..Default::default()
+        };
+        let mut out = Vec::new();
+        let input = SuggestInput {
+            data: &[],
+            offset: 0,
+            entropy_mean_bpb: 3.0,
+            entropy_std_bpb: 0.3,
+            entropy_bins_norm: None,
+        };
+        StructuredBinaryHeuristic.apply(&input, &feats, &mut out);
+        assert!(!out.is_empty());
+        assert!(out[0].label.contains("Structured"));
     }
 }

@@ -3,10 +3,6 @@ use crate::suggest::{Features, Heuristic, SuggestInput, Suggestion};
 pub struct MagicBytesHeuristic;
 
 impl Heuristic for MagicBytesHeuristic {
-    fn name(&self) -> &'static str {
-        "magic-bytes"
-    }
-
     fn apply(&self, input: &SuggestInput, feats: &Features, out: &mut Vec<Suggestion>) {
         for hit in &feats.magic_hits {
             let mut conf = if hit.strong { 0.97 } else { 0.65 };
@@ -231,4 +227,45 @@ where
         return None;
     }
     hay.windows(needle.len()).position(|w| w == needle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_png_magic() {
+        let data = b"\x89PNG\r\n\x1a\nrest";
+        let hits = scan_magic(data);
+        assert!(hits.iter().any(|h| h.name == "PNG"));
+        assert!(hits[0].strong);
+    }
+
+    #[test]
+    fn none_for_plain_bytes() {
+        let data = b"abcdefghijk";
+        let hits = scan_magic(data);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn magic_finds_riff_and_mp4() {
+        let riff_data = b"RIFF....WAVErest";
+        let mp4_data = b"\x00\x00\x00\x14ftypmp42rest";
+        assert!(
+            scan_magic(riff_data)
+                .iter()
+                .any(|h| h.name.contains("RIFF"))
+        );
+        assert!(scan_magic(mp4_data).iter().any(|h| h.name.contains("MP4")));
+    }
+
+    #[test]
+    fn json_heuristic_detects_textlike_json() {
+        let data = b"{\"hello\": 42}";
+        assert!(
+            scan_magic(data).iter().any(|h| h.name.contains("JSON")),
+            "should detect JSON (heuristic)"
+        );
+    }
 }

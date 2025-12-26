@@ -159,3 +159,60 @@ impl Analyzer for EntropyAnalyzer {
         self.entropy_norm_sparse(data)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper for repeating patterns.
+    fn repeat_pattern(pattern: &[u8], total_len: usize) -> Vec<u8> {
+        pattern.iter().cloned().cycle().take(total_len).collect()
+    }
+
+    #[test]
+    fn entropy_analyzer_b1_basic() {
+        let a = EntropyAnalyzer {
+            bucket: BucketSize::B1,
+        };
+        let constant = vec![42u8; 1024];
+        let noisy: Vec<u8> = (0..1024).map(|_| rand::random::<u8>()).collect();
+        assert_eq!(a.value_norm(&constant), 0.0);
+        let v_noisy = a.value_norm(&noisy);
+        assert!(
+            v_noisy > 0.9 && v_noisy <= 1.0,
+            "noisy bytes should approach 1"
+        );
+    }
+
+    #[test]
+    fn entropy_analyzer_b2_and_b4_match_sparse() {
+        let data = repeat_pattern(&[1, 2, 3, 4, 5, 6, 7, 8], 2048);
+
+        for bucket in [BucketSize::B2, BucketSize::B4] {
+            let a = EntropyAnalyzer { bucket };
+            let dense = a.value_norm(&data);
+            let sparse = a.value_norm_sparse(&data);
+            assert!((dense - sparse).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn entropy_analyzer_zero_length() {
+        let a = EntropyAnalyzer::default();
+        assert_eq!(a.value_norm(&[]), 0.0);
+    }
+
+    #[test]
+    fn larger_buckets_can_change_entropy_level() {
+        let pattern = (0..=255u8).cycle().take(4096).collect::<Vec<_>>();
+        let e1 = EntropyAnalyzer {
+            bucket: BucketSize::B1,
+        };
+        let e2 = EntropyAnalyzer {
+            bucket: BucketSize::B4,
+        };
+        let h1 = e1.value_norm(&pattern);
+        let h2 = e2.value_norm(&pattern);
+        assert!(h2 <= 1.0 && h1 <= 1.0);
+    }
+}

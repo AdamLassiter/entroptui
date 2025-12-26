@@ -44,3 +44,32 @@ pub fn draw_suggestions(f: &mut Frame, area: Rect, suggestions: &[Suggestion]) {
         area,
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::suggest::Suggestion;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn draw_suggestions_handles_empty_and_nonempty() {
+        let backend = ratatui::backend::TestBackend::new(80, 12);
+        let mut term = ratatui::Terminal::new(backend).unwrap();
+
+        let empty: Vec<Suggestion> = Vec::new();
+        term.draw(|f| {
+            draw_suggestions(f, Rect::new(0, 0, 80, 12), &empty);
+        })
+        .unwrap();
+
+        let populated = vec![Suggestion {
+            label: "Test suggestion",
+            confidence: 0.8,
+            reasons: vec!["reason1".to_string(), "reason2".to_string()],
+        }];
+        term.draw(|f| {
+            draw_suggestions(f, Rect::new(0, 0, 80, 12), &populated);
+        })
+        .unwrap();
+    }
+}

@@ -3,10 +3,6 @@ use crate::suggest::{Features, Heuristic, SuggestInput, Suggestion};
 pub struct LowEntropyHeuristic;
 
 impl Heuristic for LowEntropyHeuristic {
-    fn name(&self) -> &'static str {
-        "low-entropy"
-    }
-
     fn apply(&self, input: &SuggestInput, feats: &Features, out: &mut Vec<Suggestion>) {
         let h = input.entropy_mean_bpb.clamp(0.0, 8.0);
         if h < 1.2 || feats.zero_ratio > 0.35 || feats.top1_ratio > 0.35 {
@@ -24,5 +20,30 @@ impl Heuristic for LowEntropyHeuristic {
                     .reason(format!("top-byte={:.1}%", feats.top1_ratio * 100.0)),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn triggers_on_low_entropy_or_zeros() {
+        let feats = Features {
+            zero_ratio: 0.8,
+            top1_ratio: 0.8,
+            ..Default::default()
+        };
+        let mut out = Vec::new();
+        let input = SuggestInput {
+            data: &[],
+            offset: 0,
+            entropy_mean_bpb: 0.4,
+            entropy_std_bpb: 0.1,
+            entropy_bins_norm: None,
+        };
+        LowEntropyHeuristic.apply(&input, &feats, &mut out);
+        assert!(!out.is_empty());
+        assert!(out[0].label.contains("Low-entropy"));
     }
 }

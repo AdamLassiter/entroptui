@@ -7,8 +7,6 @@ use crate::{
 pub struct MetricSeriesCache {
     pub name: &'static str,
     pub values: Vec<f64>, // 0..1
-    pub mean: f64,
-    pub std: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -21,8 +19,6 @@ pub enum MetricCache {
         analyzer_name: &'static str,
         analyzer_label: &'static str,
         values: Vec<f64>, // 0..1
-        mean: f64,
-        std: f64,
     },
     Multi {
         bins: u16,
@@ -33,14 +29,6 @@ pub enum MetricCache {
         analyzer_label: &'static str,
         series: Vec<MetricSeriesCache>,
     },
-}
-impl MetricCache {
-    fn analyzer_name(&self) -> &'static str {
-        match self {
-            Self::Single { analyzer_name, .. } => analyzer_name,
-            Self::Multi { analyzer_name, .. } => analyzer_name,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]

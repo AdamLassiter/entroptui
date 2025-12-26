@@ -1,6 +1,9 @@
 use std::cmp::max;
 
-use crate::{App, cache::{MetricCache, MetricSeriesCache}};
+use crate::{
+    App,
+    cache::{MetricCache, MetricSeriesCache},
+};
 
 pub mod bitplane;
 pub mod entropy;
@@ -17,8 +20,6 @@ pub struct BinsReport {
 pub struct SeriesBinsReport {
     pub name: &'static str,
     pub values_norm: Vec<f64>,
-    pub mean: f64,
-    pub std: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -62,18 +63,15 @@ impl App {
         }
 
         let bins_usize = max(4, bins as usize);
-        let a = &self.analyzers[self.analyzer_idx];
-        let report = a.analyze_bins(&self.window_data, bins_usize);
+        let analyzer = &self.analyzers[self.analyzer_idx];
 
-        if let Some(multi) = a.analyze_bins_multi(&self.window_data, bins_usize) {
+        if let Some(multi) = analyzer.analyze_bins_multi(&self.window_data, bins_usize) {
             let series = multi
                 .series
                 .into_iter()
                 .map(|s| MetricSeriesCache {
                     name: s.name,
                     values: s.values_norm,
-                    mean: s.mean,
-                    std: s.std,
                 })
                 .collect::<Vec<_>>();
 
@@ -82,22 +80,20 @@ impl App {
                 offset: self.offset,
                 window_len: self.window_len,
                 analyzer_idx: self.analyzer_idx,
-                analyzer_name: a.name(),
-                analyzer_label: a.metric_label(),
+                analyzer_name: analyzer.name(),
+                analyzer_label: analyzer.metric_label(),
                 series,
             });
         } else {
-            let report = a.analyze_bins(&self.window_data, bins_usize);
+            let report = analyzer.analyze_bins(&self.window_data, bins_usize);
             self.metric = Some(MetricCache::Single {
                 bins,
                 offset: self.offset,
                 window_len: self.window_len,
                 analyzer_idx: self.analyzer_idx,
-                analyzer_name: a.name(),
-                analyzer_label: a.metric_label(),
+                analyzer_name: analyzer.name(),
+                analyzer_label: analyzer.metric_label(),
                 values: report.values_norm,
-                mean: report.mean,
-                std: report.std,
             });
         }
     }
@@ -180,4 +176,41 @@ fn stddev(xs: &[f64], mean: f64) -> f64 {
         .sum::<f64>()
         / (xs.len() as f64);
     var.sqrt()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mean_and_stddev_basic() {
+        let xs = [1.0, 2.0, 3.0, 4.0];
+        let m = super::mean(&xs);
+        assert!((m - 2.5).abs() < 1e-9);
+        let s = super::stddev(&xs, m);
+        assert!(s > 0.0);
+    }
+
+    #[test]
+    fn analyzer_bins_match_value_norm() {
+        struct Dummy;
+        impl Analyzer for Dummy {
+            fn name(&self) -> &'static str {
+                "dummy"
+            }
+            fn value_norm(&self, data: &[u8]) -> f64 {
+                data.iter().map(|&b| b as f64).sum::<f64>() / 255.0
+            }
+            fn value_norm_sparse(&self, data: &[u8]) -> f64 {
+                self.value_norm(data)
+            }
+        }
+
+        let d = Dummy;
+        let data = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
+        let r = d.analyze_bins(&data, 4);
+        assert_eq!(r.values_norm.len(), 4);
+        assert!(r.mean >= 0.0);
+        assert!(r.std >= 0.0);
+    }
 }

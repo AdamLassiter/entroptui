@@ -111,6 +111,7 @@ impl FileWindow {
     }
 }
 
+#[derive(Default)]
 struct App {
     path: PathBuf,
     file_len: u64,
@@ -436,4 +437,159 @@ fn draw_app(
         );
     })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::layout::Rect;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn filewindow_can_read_various_offsets() {
+        // Create temporary file with known bytes
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(&[1u8, 2, 3, 4, 5, 6]).unwrap();
+
+        let mut fw = FileWindow::open(&f.path().to_path_buf()).unwrap();
+
+        // Read first window chunk
+        let buf = fw.read_window(0, 3).unwrap();
+        assert_eq!(buf, vec![1, 2, 3]);
+
+        // Read crossing EOF safely
+        let buf2 = fw.read_window(1000, 10).unwrap();
+        assert!(buf2.is_empty() || buf2.len() <= 6);
+    }
+
+    #[test]
+    fn clamp_offset_stops_at_end_of_file() {
+        let mut app = App::new("dummy".into(), 100, 0, 10);
+        app.offset = 120; // beyond len
+        app.clamp_offset();
+        assert!(app.offset <= 99);
+    }
+
+    #[test]
+    fn zoom_in_and_out_behavior() {
+        let mut app = App::new("dummy".into(), 10000, 0, 1024);
+        let original = app.window_len;
+        app.zoom_in();
+        assert!(app.window_len <= original);
+        app.zoom_out();
+        assert!(app.window_len >= original / 2);
+    }
+
+    #[test]
+    fn scroll_and_jump_updates_offset_and_dirty_flag() {
+        let mut app = App::new("dummy".into(), 5000, 100, 1024);
+        app.scroll_by(200);
+        assert!(app.offset > 100);
+        assert!(app.dirty);
+
+        app.dirty = false;
+        app.scroll_by(-400);
+        assert!(app.offset < 100 + 200);
+        assert!(app.dirty);
+    }
+
+    #[test]
+    fn jump_to_start_and_end() {
+        let mut app = App::new("dummy".into(), 1000, 500, 256);
+        app.jump_start();
+        assert_eq!(app.offset, 0);
+        app.jump_end();
+        assert_eq!(app.offset, 999);
+    }
+
+    #[test]
+    fn view_and_analyzer_cycle_properly() {
+        let mut app = App::new("dummy".into(), 10, 0, 64);
+        let v0 = app.view;
+        app.next_view();
+        assert_ne!(app.view, v0);
+
+        let a0 = app.analyzer_idx;
+        app.next_analyzer();
+        assert!(app.analyzer_idx != a0);
+    }
+
+    #[test]
+    fn mark_dirty_clears_caches() {
+        let mut app = App::new("dummy".into(), 10, 0, 64);
+        app.metric = Some(MetricCache::Single {
+            bins: 1,
+            offset: 0,
+            window_len: 1,
+            analyzer_idx: 0,
+            analyzer_name: "test",
+            analyzer_label: "label",
+            values: vec![],
+        });
+        app.suggest_cache = Some(crate::cache::SuggestCache {
+            offset: 0,
+            window_len: 1,
+            view: ViewMode::Chart,
+            feature_len: 1,
+            features: Features::default(),
+            suggestions: vec![],
+        });
+        app.mark_dirty();
+        assert!(app.dirty);
+        assert!(app.metric.is_none());
+        assert!(app.suggest_cache.is_none());
+    }
+
+    #[test]
+    fn refresh_window_works_with_small_file() {
+        let mut fw = tempfile::NamedTempFile::new().unwrap();
+        fw.write_all(&[10, 20, 30, 40, 50]).unwrap();
+        let pb = fw.path().to_path_buf();
+        let mut window = FileWindow::open(&pb).unwrap();
+        let mut app = App::new(pb, 5, 0, 3);
+        app.refresh_window(&mut window).unwrap();
+        assert_eq!(app.window_data.len(), 5);
+    }
+
+    #[test]
+    fn ensure_size_wrapper_safe() {
+        use crate::analysis::Analyzer;
+
+        struct Dummy;
+        impl Analyzer for Dummy {
+            fn name(&self) -> &'static str {
+                "dummy"
+            }
+            fn value_norm(&self, _: &[u8]) -> f64 {
+                0.5
+            }
+            fn value_norm_sparse(&self, _: &[u8]) -> f64 {
+                0.5
+            }
+        }
+
+        let mut app = App {
+            analyzers: vec![Box::new(Dummy)],
+            analyzer_idx: 0,
+            window_data: vec![1, 2, 3, 4],
+            offset: 0,
+            window_len: 4,
+            file_len: 4,
+            hex_page_bytes: 0,
+            suggest_engine: SuggestEngine::default(),
+            path: "dummy".into(),
+            hilbert_cursor: None,
+            suggest_cache: None,
+            metric: None,
+            chart: None,
+            hilbert: None,
+            view: ViewMode::Chart,
+            status: String::new(),
+            dirty: false,
+        };
+
+        // Should execute safely
+        app.ensure_size(Rect::new(0, 0, 40, 20));
+    }
 }

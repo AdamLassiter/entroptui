@@ -43,12 +43,7 @@ impl App {
     }
 }
 
-pub fn draw_chart(
-    f: &mut Frame,
-    area: Rect,
-    metric: Option<&MetricCache>,
-    chart: Option<&ChartCache>,
-) {
+pub fn draw_chart(f: &mut Frame, area: Rect, metric: Option<&MetricCache>) {
     let (title, y_title) = match metric {
         Some(MetricCache::Single {
             analyzer_name,
@@ -164,4 +159,52 @@ fn render_chart(
         );
 
     f.render_widget(chart, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analysis::{Analyzer, BinsReport};
+
+    struct DummyAnalyzer;
+    impl Analyzer for DummyAnalyzer {
+        fn name(&self) -> &'static str {
+            "dummy"
+        }
+        fn value_norm(&self, _: &[u8]) -> f64 {
+            0.5
+        }
+        fn value_norm_sparse(&self, _: &[u8]) -> f64 {
+            0.5
+        }
+        fn analyze_bins(&self, _: &[u8], bins: usize) -> BinsReport {
+            BinsReport {
+                values_norm: vec![0.5; bins],
+                mean: 0.5,
+                std: 0.0,
+            }
+        }
+    }
+
+    fn make_app() -> App {
+        App {
+            analyzers: vec![Box::new(DummyAnalyzer)],
+            analyzer_idx: 0,
+            window_data: vec![1, 2, 3, 4],
+            offset: 0,
+            window_len: 4,
+            chart: None,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn ensure_chart_creates_chartcache() {
+        let mut app = make_app();
+        app.ensure_chart(8);
+        assert!(app.chart.is_some());
+        let ch = app.chart.as_ref().unwrap();
+        assert_eq!(ch.mean, 0.5);
+        assert!(ch.values.iter().all(|v| (*v - 0.5).abs() < 1e-9));
+    }
 }

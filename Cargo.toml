@@ -11,3 +11,7 @@ crossterm = "0.28"
 ratatui = "0.30"
 rayon = "1.10"
 rustfft = "6.2"
+
+[dev-dependencies]
+rand = "0.8"
+tempfile = "3.0"

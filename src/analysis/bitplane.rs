@@ -1,4 +1,4 @@
-use crate::analysis::{Analyzer, MultiBinsReport, SeriesBinsReport, mean, stddev};
+use crate::analysis::{Analyzer, MultiBinsReport, SeriesBinsReport};
 
 /// Average entropy of each bit-plane (0..1), where each plane’s entropy is:
 /// \(H(p) = -p\log_2(p) - (1-p)\log_2(1-p)\), max 1 when p=0.5.
@@ -20,8 +20,8 @@ impl BitPlaneEntropyAnalyzer {
         let n = data.len() as f64;
         let mut ones = [0u64; 8];
         for &b in data {
-            for bit in 0..8 {
-                ones[bit] += ((b >> bit) & 1) as u64;
+            for (i, bit) in ones.iter_mut().enumerate() {
+                *bit += ((b >> i) & 1) as u64;
             }
         }
         let mut hs = [0.0f64; 8];
@@ -59,8 +59,6 @@ impl Analyzer for BitPlaneEntropyAnalyzer {
                 series.push(SeriesBinsReport {
                     name: bit_name(bit),
                     values_norm: vec![0.0; bins],
-                    mean: 0.0,
-                    std: 0.0,
                 });
             }
             return Some(MultiBinsReport { series });
@@ -72,8 +70,8 @@ impl Analyzer for BitPlaneEntropyAnalyzer {
         for i in 0..bins {
             let start = i * bin_size;
             if start >= data.len() {
-                for b in 0..8 {
-                    per_bit[b].push(0.0);
+                for b in &mut per_bit {
+                    b.push(0.0);
                 }
                 continue;
             }
@@ -89,14 +87,10 @@ impl Analyzer for BitPlaneEntropyAnalyzer {
         }
 
         let mut series = Vec::with_capacity(8);
-        for bit in 0..8 {
-            let meanv = mean(&per_bit[bit]);
-            let stdv = stddev(&per_bit[bit], meanv);
+        for (i, bit) in per_bit.iter().enumerate() {
             series.push(SeriesBinsReport {
-                name: bit_name(bit),
-                values_norm: per_bit[bit].clone(),
-                mean: meanv,
-                std: stdv,
+                name: bit_name(i),
+                values_norm: bit.clone(),
             });
         }
 
@@ -115,5 +109,29 @@ fn bit_name(bit: usize) -> &'static str {
         6 => "bit 6",
         7 => "bit 7 (MSB)",
         _ => "bit ?",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bitplane_entropy_empty() {
+        let a = BitPlaneEntropyAnalyzer::default();
+        let data: [u8; 0] = [];
+        let v = a.value_norm(&data);
+        assert_eq!(v, 0.0);
+    }
+
+    #[test]
+    fn bitplane_entropy_random_vs_constant() {
+        let a = BitPlaneEntropyAnalyzer::default();
+        let random_bytes: Vec<u8> = (0..4096).map(|_| rand::random::<u8>()).collect();
+        let zeros = vec![0u8; 4096];
+        let h_rand = a.value_norm(&random_bytes);
+        let h_zeros = a.value_norm(&zeros);
+        assert!(h_rand > h_zeros, "random should have higher entropy");
+        assert!((0.0..=1.0).contains(&h_rand));
     }
 }

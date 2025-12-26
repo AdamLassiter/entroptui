@@ -96,3 +96,33 @@ pub fn draw_hex_viewer(f: &mut Frame, area: Rect, offset: u64, window_data: &[u8
         .wrap(Wrap { trim: false });
     f.render_widget(p, area);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn compute_hex_page_bytes_reasonable() {
+        let r = Rect::new(0, 0, 80, 25);
+        let b = compute_hex_page_bytes(r);
+        // 25 height minus top/bottom 3+6=9 => main≈16 lines, ×16 bytes ≈ 256, within range.
+        assert!(b >= 16 && b < 1000);
+    }
+
+    #[test]
+    fn empty_hex_handles_no_data_without_panic() {
+        let area = Rect::new(0, 0, 80, 10);
+        let buf = ratatui::backend::TestBackend::new(80, 10);
+        let mut term = ratatui::Terminal::new(buf).unwrap();
+        term.draw(|f| draw_hex_viewer(f, area, 0, &[])).unwrap();
+        // No assertion on visuals; just ensure it draws safely.
+    }
+
+    #[test]
+    fn computes_byte_count_small_area() {
+        let r = Rect::new(0, 0, 20, 8);
+        let b = compute_hex_page_bytes(r);
+        assert!(b <= 200);
+    }
+}

@@ -3,10 +3,6 @@ use crate::suggest::{Features, Heuristic, SuggestInput, Suggestion};
 pub struct TextHeuristic;
 
 impl Heuristic for TextHeuristic {
-    fn name(&self) -> &'static str {
-        "text"
-    }
-
     fn apply(&self, input: &SuggestInput, feats: &Features, out: &mut Vec<Suggestion>) {
         let h = input.entropy_mean_bpb.clamp(0.0, 8.0);
 
@@ -39,5 +35,30 @@ impl Heuristic for TextHeuristic {
                     .reason(format!("entropy≈{:.2} bits/byte", h)),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_utf8_text() {
+        let feats = Features {
+            printable_ratio: 0.98,
+            zero_ratio: 0.0,
+            utf8_valid: true,
+            ..Default::default()
+        };
+        let input = SuggestInput {
+            data: "hello".as_bytes(),
+            offset: 0,
+            entropy_mean_bpb: 4.0,
+            entropy_std_bpb: 0.5,
+            entropy_bins_norm: None,
+        };
+        let mut out = Vec::new();
+        TextHeuristic.apply(&input, &feats, &mut out);
+        assert!(out.iter().any(|s| s.label.contains("text")));
     }
 }

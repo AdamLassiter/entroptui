@@ -25,8 +25,9 @@ use ratatui::{
 use std::cmp::{max, min};
 use std::path::Path;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
 pub enum ViewMode {
+    #[default]
     Chart,
     Hilbert,
     Hex,
@@ -111,10 +112,8 @@ pub fn draw(
     draw_main(
         f,
         root[1],
-        offset,
         view,
         metric,
-        chart,
         hilbert,
         hilbert_cursor,
         hex_base_offset,
@@ -177,10 +176,8 @@ fn draw_header(
 fn draw_main(
     f: &mut Frame,
     area: Rect,
-    offset: u64,
     view: ViewMode,
     metric: Option<&MetricCache>,
-    chart: Option<&ChartCache>,
     hilbert: Option<&HilbertCache>,
     hilbert_cursor: Option<HilbertCursor>,
     hex_base_offset: u64,
@@ -188,7 +185,7 @@ fn draw_main(
 ) {
     match view {
         ViewMode::Hilbert => draw_hilbert(f, area, hilbert, hilbert_cursor),
-        ViewMode::Chart => draw_chart(f, area, metric, chart),
+        ViewMode::Chart => draw_chart(f, area, metric),
         ViewMode::Hex => draw_hex_viewer(f, area, hex_base_offset, hex_data),
     }
 }
@@ -221,4 +218,55 @@ fn draw_footer(
     );
     draw_suggestions(f, chunks[1], suggestions);
     draw_shortcuts(f, chunks[2]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn viewmode_next_cycles_correctly() {
+        assert_eq!(ViewMode::Chart.next(), ViewMode::Hilbert);
+        assert_eq!(ViewMode::Hilbert.next(), ViewMode::Hex);
+        assert_eq!(ViewMode::Hex.next(), ViewMode::Chart);
+    }
+
+    #[test]
+    fn viewmode_label_returns_expected() {
+        assert_eq!(ViewMode::Chart.label(), "Chart");
+        assert_eq!(ViewMode::Hilbert.label(), "Hilbert");
+        assert_eq!(ViewMode::Hex.label(), "Hex");
+    }
+
+    #[test]
+    fn ensure_views_doesnt_panic() {
+        use crate::analysis::Analyzer;
+        use ratatui::layout::Rect;
+
+        struct Dummy;
+        impl Analyzer for Dummy {
+            fn name(&self) -> &'static str {
+                "dummy"
+            }
+            fn value_norm(&self, _: &[u8]) -> f64 {
+                0.5
+            }
+            fn value_norm_sparse(&self, _: &[u8]) -> f64 {
+                0.5
+            }
+        }
+
+        let mut app = App {
+            analyzers: vec![Box::new(Dummy)],
+            analyzer_idx: 0,
+            window_data: vec![0u8; 64],
+            offset: 0,
+            window_len: 64,
+            ..Default::default()
+        };
+
+        let size = Rect::new(0, 0, 40, 20);
+        let bins = app.ensure_views(size);
+        assert!(bins >= 10);
+    }
 }

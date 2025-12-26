@@ -76,6 +76,9 @@ pub fn draw_summary(
     summary_lines.push(Line::from(vec![
         Span::raw("window bytes read: "),
         num_span(window_data.len().to_string(), Color::Cyan),
+        Span::raw(" ["),
+        num_span(features.sample_len.to_string(), Color::Cyan),
+        Span::raw("]"),
     ]));
     summary_lines.push(Line::from(vec![
         Span::raw("mean entropy: "),
@@ -120,10 +123,117 @@ pub fn draw_summary(
         ),
     ]));
 
+    let ff_pct = features.ff_ratio * 100.0;
+    summary_lines.push(Line::from(vec![
+        Span::raw("0xFF ratio: "),
+        num_span(format!("{:.3}%", ff_pct), color_for_ratio_low_good(ff_pct)),
+    ]));
+
+    let whitespace_pct = features.whitespace_ratio * 100.0;
+    summary_lines.push(Line::from(vec![
+        Span::raw("whitespace ratio: "),
+        num_span(
+            format!("{:.3}%", whitespace_pct),
+            color_for_ratio_low_good(whitespace_pct),
+        ),
+    ]));
+
+    let newline_pct = features.newline_ratio * 100.0;
+    summary_lines.push(Line::from(vec![
+        Span::raw("newline ratio: "),
+        num_span(
+            format!("{:.3}%", newline_pct),
+            color_for_ratio_low_good(newline_pct),
+        ),
+    ]));
+
     f.render_widget(
         Paragraph::new(summary_lines)
             .block(block)
             .wrap(Wrap { trim: true }),
         area,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn color_for_entropy_bpb_ranges() {
+        assert_eq!(color_for_entropy_bpb(0.0), Color::Blue);
+        assert_eq!(color_for_entropy_bpb(3.0), Color::Yellow);
+        assert_eq!(color_for_entropy_bpb(6.0), Color::LightRed);
+        assert_eq!(color_for_entropy_bpb(8.0), Color::Red);
+    }
+
+    #[test]
+    fn color_for_std_bpb_ranges() {
+        assert_eq!(color_for_std_bpb(0.1), Color::Green);
+        assert_eq!(color_for_std_bpb(0.8), Color::Yellow);
+        assert_eq!(color_for_std_bpb(2.0), Color::Red);
+    }
+
+    #[test]
+    fn ratio_color_functions_high_low_good() {
+        assert_eq!(color_for_ratio_high_good(99.0), Color::Green);
+        assert_eq!(color_for_ratio_high_good(85.0), Color::Yellow);
+        assert_eq!(color_for_ratio_high_good(10.0), Color::Red);
+
+        assert_eq!(color_for_ratio_low_good(0.1), Color::Green);
+        assert_eq!(color_for_ratio_low_good(5.0), Color::Yellow);
+        assert_eq!(color_for_ratio_low_good(50.0), Color::Red);
+    }
+
+    #[test]
+    fn num_span_applies_color() {
+        let s = num_span("123".into(), Color::Cyan);
+        let style = s.style;
+        assert_eq!(style.fg.unwrap(), Color::Cyan);
+    }
+
+    #[test]
+    fn draw_summary_executes_safely() {
+        let backend = ratatui::backend::TestBackend::new(80, 10);
+        let mut term = ratatui::Terminal::new(backend).unwrap();
+        let plot = Some(ChartCache {
+            bins: 10,
+            offset: 0,
+            window_len: 10,
+            analyzer_idx: 0,
+            values: vec![0.1; 10],
+            mean: 0.1,
+            std: 0.1,
+        });
+        let features = Features::default();
+        term.draw(|f| {
+            draw_summary(
+                f,
+                Rect::new(0, 0, 80, 10),
+                &[0u8; 10],
+                plot.as_ref(),
+                &features,
+                None,
+            )
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn color_helpers_never_produce_unknowns() {
+        for f in [color_for_entropy_bpb, color_for_std_bpb] {
+            for &val in &[0.0, 1.0, 3.0, 6.0, 8.0] {
+                match f(val) {
+                    Color::Blue
+                    | Color::Yellow
+                    | Color::LightRed
+                    | Color::Red
+                    | Color::Green
+                    | Color::Cyan => {}
+                    other => panic!("unexpected color {:?}", other),
+                }
+            }
+        }
+    }
 }

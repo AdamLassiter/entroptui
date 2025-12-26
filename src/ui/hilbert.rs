@@ -279,3 +279,107 @@ fn rot(s: u32, mut x: u32, mut y: u32, rx: u32, ry: u32) -> (u32, u32) {
         (x, y)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lerp_u8_interpolates() {
+        assert_eq!(lerp_u8(0, 100, 0.0), 0);
+        assert_eq!(lerp_u8(0, 100, 1.0), 100);
+        assert_eq!(lerp_u8(0, 100, 0.5), 50);
+    }
+
+    #[test]
+    fn heatmap_colors_progress_correctly() {
+        let blue = heatmap_rgb(0.0);
+        let red = heatmap_rgb(1.0);
+        assert_eq!(blue, (0, 0, 255));
+        assert_eq!(red, (255, 0, 0));
+        let mid = heatmap_rgb(0.5);
+        assert!(mid.1 > 0); // green component present
+    }
+
+    #[test]
+    fn best_pow2_side_clamps() {
+        assert_eq!(best_pow2_side(0), 0);
+        assert_eq!(best_pow2_side(1), 0);
+        assert_eq!(best_pow2_side(3), 2);
+        assert_eq!(best_pow2_side(8), 8);
+        assert_eq!(best_pow2_side(9), 8);
+    }
+
+    #[test]
+    fn d2xy_maps_inside_square() {
+        let side = 4;
+        for d in 0..(side * side) {
+            let (x, y) = d2xy(side, d as u32);
+            assert!(x < side);
+            assert!(y < side);
+        }
+    }
+
+    #[test]
+    fn rot_reflects_and_swaps() {
+        // Simple check: rotation shouldn't produce NaN or overflow
+        assert_eq!(rot(1, 0, 0, 0, 0), (0, 0));
+        assert_eq!(rot(1, 0, 0, 1, 0), (0, 0));
+        assert_eq!(rot(2, 1, 0, 1, 1), (1, 0));
+    }
+
+    #[test]
+    fn ensure_cursor_clamp_and_range_safe() {
+        // Minimal stub App for testing logic
+        use crate::analysis::Analyzer;
+
+        struct Dummy;
+        impl Analyzer for Dummy {
+            fn name(&self) -> &'static str {
+                "dummy"
+            }
+            fn value_norm(&self, _: &[u8]) -> f64 {
+                0.5
+            }
+            fn value_norm_sparse(&self, _: &[u8]) -> f64 {
+                0.5
+            }
+        }
+
+        let mut app = App {
+            analyzers: vec![Box::new(Dummy)],
+            analyzer_idx: 0,
+            window_data: vec![0u8; 1024],
+            offset: 0,
+            window_len: 1024,
+            hilbert: None,
+            hilbert_cursor: Some(HilbertCursor { x: 999, y: 999 }),
+            ..Default::default()
+        };
+
+        app.ensure_hilbert(8);
+        let h = app.hilbert.as_ref().unwrap();
+        assert_eq!(h.side, 8);
+
+        // Cursor must clamp within bounds
+        let c = app.hilbert_cursor.unwrap();
+        assert!(c.x < 8 && c.y < 8);
+
+        // Derived range must match data length bounds
+        let r = app.hilbert_cursor_range();
+        assert!(r.is_some());
+        let (_, end, val) = r.unwrap();
+        assert!(end as usize <= app.window_data.len() as usize + app.offset as usize);
+        assert!(val >= 0.0 && val <= 1.0);
+    }
+
+    #[test]
+    fn hilbert_d2xy_covers_unique_positions() {
+        let side = 8;
+        let mut coords = std::collections::HashSet::new();
+        for d in 0..side * side {
+            coords.insert(d2xy(side, d as u32));
+        }
+        assert_eq!(coords.len(), (side * side) as usize);
+    }
+}

@@ -3,10 +3,6 @@ use crate::suggest::{Features, Heuristic, SuggestInput, Suggestion};
 pub struct CompressedVsEncryptedHeuristic;
 
 impl Heuristic for CompressedVsEncryptedHeuristic {
-    fn name(&self) -> &'static str {
-        "compressed-vs-encrypted"
-    }
-
     fn apply(&self, input: &SuggestInput, feats: &Features, out: &mut Vec<Suggestion>) {
         let h = input.entropy_mean_bpb.clamp(0.0, 8.0);
 
@@ -61,5 +57,35 @@ impl Heuristic for CompressedVsEncryptedHeuristic {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::suggest::magic::MagicHit;
+    use super::*;
+
+    #[test]
+    fn detects_compressed_or_encrypted() {
+        // with magic
+        let feats = Features {
+            chi_square_256: 200.0,
+            magic_hits: vec![MagicHit {
+                name: "ZIP (local file header)",
+                at: 0,
+                strong: true,
+            }],
+            ..Default::default()
+        };
+        let mut out = Vec::new();
+        let input = SuggestInput {
+            data: &[],
+            offset: 0,
+            entropy_mean_bpb: 7.8,
+            entropy_std_bpb: 0.3,
+            entropy_bins_norm: None,
+        };
+        CompressedVsEncryptedHeuristic.apply(&input, &feats, &mut out);
+        assert!(out.iter().any(|s| s.label.contains("Compressed")));
     }
 }

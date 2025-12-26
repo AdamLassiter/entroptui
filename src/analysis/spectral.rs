@@ -124,3 +124,43 @@ impl Analyzer for SpectralFlatnessAnalyzer {
         self.value_norm(data)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spectral_flatness_empty_small() {
+        let a = SpectralFlatnessAnalyzer::default();
+        assert_eq!(a.value_norm(&[]), 0.0);
+        assert_eq!(a.value_norm(&[1u8; 10]), 0.0);
+    }
+
+    #[test]
+    fn spectral_flatness_noisy_vs_sine() {
+        let n = 1024;
+        // Simulated noise
+        let noise: Vec<u8> = (0..n).map(|_| rand::random::<u8>()).collect();
+        // Simulated periodic signal: full sinewave in byte space
+        let sine: Vec<u8> = (0..n)
+            .map(|i| (127.5 + 127.5 * (2.0 * std::f64::consts::PI * i as f64 / 32.0).sin()) as u8)
+            .collect();
+
+        let a = SpectralFlatnessAnalyzer::default();
+        let flat_noise = a.value_norm(&noise);
+        let flat_sine = a.value_norm(&sine);
+
+        assert!(flat_noise > flat_sine, "noise spectrum should be flatter");
+        assert!((0.0..=1.0).contains(&flat_noise));
+        assert!((0.0..=1.0).contains(&flat_sine));
+    }
+
+    #[test]
+    fn fft_plan_selection_works() {
+        let s = SpectralFlatnessAnalyzer::new(2048);
+        let n = s.pick_n(300).expect("should pick 512");
+        assert!(n.is_power_of_two());
+        let fft = s.fft_for(n);
+        assert!(fft.is_some());
+    }
+}

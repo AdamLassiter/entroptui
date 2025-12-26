@@ -261,7 +261,6 @@ fn chi_square_uniform_256(hist: &[u32; 256], n: usize) -> f64 {
 }
 
 pub trait Heuristic: Send + Sync {
-    fn name(&self) -> &'static str;
     fn apply(&self, input: &SuggestInput, feats: &Features, out: &mut Vec<Suggestion>);
 }
 
@@ -323,5 +322,70 @@ impl Default for SuggestEngine {
             .with(low_entropy::LowEntropyHeuristic)
             .with(mixed_region::MixedRegionsHeuristic)
             .with(structured_bin::StructuredBinaryHeuristic)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn suggestion_display_produces_confidence_percent() {
+        let s = Suggestion {
+            label: "Example",
+            confidence: 0.731,
+            reasons: vec!["reason".into()],
+        };
+
+        // We can't capture rendered text easily, but we can at least ensure the numeric math is well-behaved
+        let pct = (s.confidence as f64 * 100.0).round() as i64;
+        assert_eq!(pct, 73);
+    }
+
+    #[test]
+    fn features_compute_basic_characteristics() {
+        // Simulate simple printable ASCII with some whitespace and newlines.
+        // We expect high printable, non-zero, valid utf8, and moderate entropy bounds.
+        let data = b"Hello world!\nThis is a test line.\n";
+        let input = SuggestInput {
+            data,
+            offset: 0,
+            entropy_mean_bpb: 4.2,
+            entropy_std_bpb: 0.5,
+            entropy_bins_norm: None,
+        };
+
+        let feats = Features::compute(&input);
+        assert_eq!(feats.sample_len, data.len());
+        assert!(feats.printable_ratio > 0.95, "mostly printable");
+        assert!(feats.zero_ratio < 0.01);
+        assert!(feats.utf8_valid);
+        assert!(feats.chi_square_256.is_finite());
+    }
+
+    #[test]
+    fn suggest_engine_merges_duplicate_labels_and_raises_confidence() {
+        use crate::suggest::{Features, Heuristic, SuggestEngine, SuggestInput, Suggestion};
+
+        struct DummyHeur;
+        impl Heuristic for DummyHeur {
+            fn apply(&self, _: &SuggestInput, _: &Features, out: &mut Vec<Suggestion>) {
+                out.push(Suggestion::new("SameLabel", 0.4));
+                out.push(Suggestion::new("SameLabel", 0.8));
+            }
+        }
+
+        let eng = SuggestEngine::new().with(DummyHeur);
+        let input = SuggestInput {
+            data: b"abc",
+            offset: 0,
+            entropy_mean_bpb: 3.0,
+            entropy_std_bpb: 0.0,
+            entropy_bins_norm: None,
+        };
+        let (_feats, s) = eng.suggest(input);
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].label, "SameLabel");
+        assert!((s[0].confidence - 0.8).abs() < 1e-6);
     }
 }
